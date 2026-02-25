@@ -24,21 +24,22 @@ typedef struct jw_context {
 typedef struct jw_display {
     int id;
     int width, height;
-    struct jw_layer *root_layer;   // 图层树根节点
+    struct jw_layer *layers;       // 图层链表头节点 (Z轴最底层)
     struct jw_proxy *proxy;        // 对应的后端代理 (桥接硬件)
     struct jw_buffer *framebuffer; // 最终合成的 Buffer
 } jw_display_t;
 
-// 图层对象，支持层级渲染
+// 图层对象，扁平化管理，仅通过链表顺序表达 Z 轴 (Paint Order)
 typedef struct jw_layer {
+    int id;
     int x, y, width, height;       // 图层几何信息
     uint8_t opacity;               // 不透明度 (0-255)
     bool visible;                  // 可见性
     struct jw_buffer *buffer;      // 图层内容 (像素数据)
-    struct jw_layer *parent;       // 父节点
-    struct jw_layer *next;         // 兄弟节点
-    struct jw_layer *child;        // 子节点列表
     
+    struct jw_layer *next;         // 下一个图层 (Z轴更靠上)
+    struct jw_layer *prev;         // 上一个图层 (Z轴更靠下)
+
     // 脏矩形区域，用于局部渲染优化
     struct jw_rect dirty_rect; 
 } jw_layer_t;
@@ -69,7 +70,12 @@ typedef struct jw_proxy_ops {
 typedef struct jw_proxy {
     struct jw_context *ctx;
     const jw_proxy_ops_t *ops;
-    void *private_data; // 私有数据 (如 drm_fd, fb_fd, sdl_window 指针等)
+    
+    // 关联的硬件加速器
+    struct jw_accelerator *accle;
+    
+    // 实现方自行扩展的结构体通常通过 container_of 宏获取，不需要泛型指针
+    // 例如 struct drm_proxy { struct jw_proxy base; int drm_fd; ... };
 } jw_proxy_t;
 ```
 
@@ -85,21 +91,32 @@ typedef struct jw_proxy {
 #### 接口设计
 
 ```c
-typedef struct jw_accelerator_ops {
+typedef struct jw_accelerator jw_accelerator_t;
+
+// 加速器操作接口表
+struct jw_accelerator_ops {
     // 基础 2D 操作
-    int (*fill_rect)(struct jw_buffer *dst, struct jw_rect *rect, uint32_t color);
+    int (*fill_rect)(jw_accelerator_t *acc, struct jw_buffer *dst, struct jw_rect *rect, uint32_t color);
     
     // 拷贝与合成
-    int (*blit)(struct jw_buffer *src, struct jw_rect *src_rect,
+    int (*blit)(jw_accelerator_t *acc, struct jw_buffer *src, struct jw_rect *src_rect,
                 struct jw_buffer *dst, struct jw_rect *dst_rect);
     
     // 高级操作 (可选)
-    int (*blend)(struct jw_buffer *src, struct jw_buffer *dst, jw_blend_mode_t mode);
-    int (*scale)(struct jw_buffer *src, struct jw_buffer *dst); // 缩放
+    int (*blend)(jw_accelerator_t *acc, struct jw_buffer *src, struct jw_buffer *dst, jw_blend_mode_t mode);
+    int (*scale)(jw_accelerator_t *acc, struct jw_buffer *src, struct jw_buffer *dst); // 缩放
     
     // 硬件特定的同步操作
-    int (*sync)(void);
-} jw_accelerator_ops_t;
+    int (*sync)(jw_accelerator_t *acc);
+};
+
+// 加速器实例
+struct jw_accelerator {
+    const struct jw_accelerator_ops *ops;
+    
+    // 加速器持有的资源 (如 G2D Handle, GPU Context 等)
+    // 通常通过派生结构体实现，例如 struct g2d_accelerator { struct jw_accelerator base; int fd; ... };
+};
 ```
 
 **实现示例**：
@@ -116,18 +133,50 @@ typedef struct jw_accelerator_ops {
 ```c
 typedef enum {
     JW_EVENT_NONE,
-    JW_EVENT_TOUCH,    // 触摸屏事件
-    JW_EVENT_KEY,      // 物理按键事件
-    JW_EVENT_SYSTEM,   // 系统消息 (休眠、唤醒、热插拔)
-    JW_EVENT_VSYNC     // 垂直同步信号
+    JW_EVENT_TOUCH,      // 多点触摸事件 (手指)
+    JW_EVENT_MOUSE_KEY,  // 鼠标按键 (左键、右键、中键)
+    JW_EVENT_MOUSE_MOVE, // 鼠标移动事件
+    JW_EVENT_MOUSE_WHEEL,// 鼠标滚轮事件
+    JW_EVENT_KEY,        // 物理按键事件 (键盘)
+    JW_EVENT_SYSTEM,     // 系统消息 (休眠、唤醒、热插拔)
+    JW_EVENT_VSYNC       // 垂直同步信号
 } jw_event_type_t;
 
 typedef struct jw_event {
     jw_event_type_t type;
     uint64_t timestamp;
     union {
-        struct { int x, y; int id; int state; } touch;
-        struct { int code; int state; } key;
+        // 多点触摸 (JW_EVENT_TOUCH)
+        struct { 
+            int x, y;       // 坐标
+            int id;         // 触摸点 ID (0-9)
+            int state;      // JW_TOUCH_DOWN, JW_TOUCH_UP, JW_TOUCH_MOVE
+            float pressure; // 压力值 (0.0-1.0)
+        } touch;
+
+        // 鼠标移动 (JW_EVENT_MOUSE_MOVE)
+        struct { 
+            int x, y;       // 绝对坐标
+            int dx, dy;     // 相对位移
+        } mouse_move;
+
+        // 鼠标按键 (JW_EVENT_MOUSE_KEY)
+        struct {
+            int button;     // JW_MOUSE_LEFT, JW_MOUSE_RIGHT, JW_MOUSE_MIDDLE
+            int state;      // JW_MOUSE_DOWN, JW_MOUSE_UP
+            int x, y;       // 按键触发时的坐标
+        } mouse_key;
+
+        // 鼠标滚轮 (JW_EVENT_MOUSE_WHEEL)
+        struct {
+            int x, y;       // 滚动方向和距离
+        } wheel;
+
+        // 物理按键 (JW_EVENT_KEY)
+        struct { 
+            int code;       // Key Code (Linux Input Event Code)
+            int state;      // JW_KEY_DOWN, JW_KEY_UP, JW_KEY_REPEAT
+        } key;
     } data;
 } jw_event_t;
 
@@ -146,17 +195,24 @@ src/
 │   ├── jw_layer.c        // 图层树操作与管理
 │   └── jw_buffer.c       // 显存/Buffer 管理器
 ├── proxy/
-│   ├── jw_proxy.c        // Proxy 基类与工厂模式
-│   ├── backend_fbdev.c   // Linux Framebuffer 实现
-│   ├── backend_drm.c     // Linux DRM/KMS 实现
-│   └── backend_sdl.c     // SDL2 模拟实现 (跨平台)
-├── event/
-│   ├── jw_event.c        // 事件队列与分发
-│   └── input_evdev.c     // Linux Input Subsystem 封装 (读取 /dev/input/event*)
+│   └── jw_proxy.c        // Proxy 基类与工厂模式
 ├── accelerator/
 │   ├── jw_accel.c        // 加速器抽象层
 │   └── soft_renderer.c   // 软件渲染实现 (纯 CPU)
+├── event/
+│   └── jw_event.c        // 事件队列与分发
 └── platform/
-    ├── jw_time.c         // 高精度时间封装
-    └── jw_log.c          // 日志与调试系统
+    ├── sys/              // 系统基础适配
+    │   ├── jw_time.c     // 高精度时间封装
+    │   └── jw_log.c      // 日志与调试系统
+    ├── backend/          // 显示后端实现 (实现 Proxy 接口)
+    │   ├── fbdev/        // Linux Framebuffer
+    │   ├── drm/          // Linux DRM/KMS
+    │   └── sdl/          // SDL2 模拟实现
+    └── input/            // 输入设备适配
+        └── evdev/        // Linux Input Subsystem
+    └── accelerator/      // 硬件加速器实现
+        ├── g2d/          // Allwinner G2D
+        ├── rga/          // Rockchip RGA
+        └── gl/           // OpenGL ES
 ```
