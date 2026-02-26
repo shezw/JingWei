@@ -53,10 +53,6 @@ if(SDL2_FOUND)
     if(APPLE) 
        target_include_directories(sdl2_test PRIVATE /opt/homebrew/opt/sdl2/include)
        target_link_directories(sdl2_test PRIVATE /opt/homebrew/lib)
-    endif()
-
-    # Fix for macOS RPATH if referencing dylibs directly
-    if(APPLE)
         set_target_properties(sdl2_test PROPERTIES 
             BUILD_WITH_INSTALL_RPATH TRUE
             INSTALL_RPATH "/opt/homebrew/lib;/usr/local/lib"
@@ -64,6 +60,9 @@ if(SDL2_FOUND)
     endif()
 
     message(STATUS "Enabled sdl2_test (SDL2 found)")
+
+    # Enable Multi-process experiment
+    add_subdirectory(multi_process)
 else()
     message(STATUS "SDL2 not found, skipping sdl2_test. Please install libsdl2-dev or sdl2.")
 endif()
