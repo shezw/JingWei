@@ -24,8 +24,9 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <SDL2/SDL.h>
+#include "protocol.h"
 
-#define SOCKET_PATH "/tmp/jw_mt_core.sock"
+// #define JW_MT_SOCKET_PATH "/tmp/jw_mt_core.sock" // Moved to protocol.h 
 #define MAX_CLIENTS 10
 
 // Simple structure to manage displays (SDL Windows)
@@ -73,8 +74,8 @@ int main(int argc, char *argv[]) {
 
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path) - 1);
-    unlink(SOCKET_PATH);
+    strncpy(addr.sun_path, JW_MT_SOCKET_PATH, sizeof(addr.sun_path) - 1);
+    unlink(JW_MT_SOCKET_PATH);
 
     if (bind(server_fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
         perror("bind");
@@ -92,7 +93,7 @@ int main(int argc, char *argv[]) {
         client_sockets[i] = 0;
     }
 
-    printf("jw_mt_core started on %s...\n", SOCKET_PATH);
+    printf("jw_mt_core started on %s...\n", JW_MT_SOCKET_PATH);
 
     bool running = true;
     while(running) {
@@ -146,110 +147,156 @@ int main(int argc, char *argv[]) {
                         close(sd);
                         client_sockets[i] = 0;
                     } else {
-                        // Protocol: Simple text based for this experiment
-                        // CMD [ARGS...]
+                        // Protocol: Binary
+                        if (valread < sizeof(jw_msg_header_t)) {
+                             fprintf(stderr, "Received incomplete header (%ld bytes)\n", valread);
+                             continue;
+                        }
                         
-                        char cmd[32] = {0};
-                        sscanf(buffer, "%s", cmd);
+                        jw_msg_header_t *hdr = (jw_msg_header_t*)buffer;
+                        
+                        // Validate Checksum (simple full buffer check)
+                        if (!jw_validate_checksum((uint8_t*)buffer, valread)) {
+                             fprintf(stderr, "Checksum mismatch! Expected %d\n", hdr->checksum);
+                             continue;
+                        }
+                        
+                        // Process Command
+                        if (hdr->type == JW_MSG_TYPE_CMD) {
+                            switch (hdr->cmd) {
+                                case JW_CMD_CREATE_DISPLAY: {
+                                    if (valread < sizeof(jw_msg_header_t) + sizeof(jw_payload_create_display_t)) break;
+                                    jw_payload_create_display_t *p = (jw_payload_create_display_t*)(buffer + sizeof(jw_msg_header_t));
+                                    
+                                    printf("CMD: Create Display '%s' (%dx%d)\n", p->name, p->w, p->h);
+                                    
+                                    jw_display_t *new_disp = (jw_display_t*)malloc(sizeof(jw_display_t));
+                                    memset(new_disp, 0, sizeof(jw_display_t));
+                                    new_disp->id = ++g_display_id_counter;
+                                    new_disp->w = p->w;
+                                    new_disp->h = p->h;
+                                    new_disp->window = SDL_CreateWindow(p->name, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, p->w, p->h, SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI);
+                                    
+                                    if (new_disp->window) {
+                                        new_disp->renderer = SDL_CreateRenderer(new_disp->window, -1, SDL_RENDERER_ACCELERATED);
+                                        if (new_disp->renderer) {
+                                             new_disp->texture = SDL_CreateTexture(new_disp->renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, p->w, p->h);
+                                        }
+                                    }
 
-                        if(strcmp(cmd, "create_display") == 0) {
-                            char name[64] = {0};
-                            int w = 0, h = 0;
-                            sscanf(buffer, "create_display %s %d %d", name, &w, &h);
-                            
-                            printf("Creating display: %s (%dx%d)\n", name, w, h);
-
-                            jw_display_t *new_disp = (jw_display_t*)malloc(sizeof(jw_display_t));
-                            memset(new_disp, 0, sizeof(jw_display_t));
-                            new_disp->id = ++g_display_id_counter;
-                            new_disp->w = w;
-                            new_disp->h = h;
-                            new_disp->window = SDL_CreateWindow(name, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w, h, SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI);
-                            
-                            if (new_disp->window) {
-                                new_disp->renderer = SDL_CreateRenderer(new_disp->window, -1, SDL_RENDERER_ACCELERATED);
-                                if (new_disp->renderer) {
-                                     new_disp->texture = SDL_CreateTexture(new_disp->renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
+                                    if (!new_disp->texture) {
+                                        printf("Failed to create SDL resources: %s\n", SDL_GetError());
+                                    } else {
+                                        new_disp->next = g_displays;
+                                        g_displays = new_disp;
+                                    }
+                                    
+                                    // Send Response
+                                    jw_msg_header_t resp_hdr = {0};
+                                    resp_hdr.type = JW_MSG_TYPE_RESP;
+                                    resp_hdr.cmd = JW_CMD_RESPONSE;
+                                    resp_hdr.msg_id = hdr->msg_id;
+                                    resp_hdr.len = sizeof(jw_msg_header_t) + sizeof(jw_payload_response_t);
+                                    
+                                    jw_payload_response_t resp_data = {0};
+                                    resp_data.status = new_disp->texture ? 0 : -1;
+                                    resp_data.data.new_id = new_disp->id;
+                                    
+                                    uint8_t resp_buf[256];
+                                    memcpy(resp_buf, &resp_hdr, sizeof(jw_msg_header_t));
+                                    memcpy(resp_buf + sizeof(jw_msg_header_t), &resp_data, sizeof(jw_payload_response_t));
+                                    resp_buf[6] = jw_calculate_checksum(resp_buf, resp_hdr.len);
+                                    
+                                    send(sd, resp_buf, resp_hdr.len, 0);
+                                    break;
                                 }
-                            }
-
-                            if (!new_disp->texture) {
-                                printf("Failed to create SDL resources: %s\n", SDL_GetError());
-                            } else {
-                                new_disp->next = g_displays;
-                                g_displays = new_disp;
-                            }
-                            
-                            char resp[32];
-                            snprintf(resp, sizeof(resp), "%d", new_disp->id);
-                            send(sd, resp, strlen(resp), 0);
-
-                        } else if (strcmp(cmd, "create_canvas") == 0) {
-                             int did = 0;
-                             int w = 0, h = 0; 
-                             sscanf(buffer, "create_canvas %d %d %d", &did, &w, &h);
-                             
-                             jw_display_t *disp = find_display(did);
-                             char resp[128] = "ERROR";
-                             
-                             if (disp) {
-                                 snprintf(disp->shm_name, sizeof(disp->shm_name), "/jw_shm_%d", did);
-                                 
-                                 // Unlink if exists, ensures clean start
-                                 shm_unlink(disp->shm_name);
-
-                                 // On macOS, shm_open requires the name to start with /
-                                 // Also, permission bits 0666 might be modified by umask
-                                 int fd = shm_open(disp->shm_name, O_CREAT | O_RDWR, 0666);
-                                 if (fd >= 0) {
-                                     // Ensure size is big enough
-                                     if (ftruncate(fd, disp->w * disp->h * 4) == -1) {
-                                          perror("ftruncate failed");
-                                          close(fd);
-                                          shm_unlink(disp->shm_name);
-                                     } else {
-                                         disp->shm_fd = fd;
-                                         disp->shm_ptr = mmap(0, disp->w * disp->h * 4, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-                                         
-                                         if (disp->shm_ptr != MAP_FAILED) {
-                                             snprintf(resp, sizeof(resp), "%s", disp->shm_name);
+                                case JW_CMD_CREATE_CANVAS: {
+                                    if (valread < sizeof(jw_msg_header_t) + sizeof(jw_payload_create_canvas_t)) break;
+                                    jw_payload_create_canvas_t *p = (jw_payload_create_canvas_t*)(buffer + sizeof(jw_msg_header_t));
+                                    
+                                    printf("CMD: Create Canvas for Display %d (%dx%d)\n", p->display_id, p->w, p->h);
+                                    
+                                    jw_display_t *disp = find_display(p->display_id);
+                                    int status = -1;
+                                    char msg_buf[64] = "ERROR";
+                                    
+                                    if (disp) {
+                                         snprintf(disp->shm_name, sizeof(disp->shm_name), "/jw_shm_%d", p->display_id);
+                                         shm_unlink(disp->shm_name);
+                                         int fd = shm_open(disp->shm_name, O_CREAT | O_RDWR, 0666);
+                                         if (fd >= 0) {
+                                             if (ftruncate(fd, disp->w * disp->h * 4) != -1) {
+                                                 disp->shm_fd = fd;
+                                                 disp->shm_ptr = mmap(0, disp->w * disp->h * 4, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+                                                 if (disp->shm_ptr != MAP_FAILED) {
+                                                     status = 0;
+                                                     strncpy(msg_buf, disp->shm_name, 63);
+                                                 } else {
+                                                     perror("mmap failed"); close(fd); shm_unlink(disp->shm_name);
+                                                 }
+                                             } else {
+                                                  perror("ftruncate"); close(fd); shm_unlink(disp->shm_name);
+                                             }
                                          } else {
-                                             perror("mmap failed");
-                                             close(fd);
-                                             shm_unlink(disp->shm_name);
+                                             fprintf(stderr, "shm_open failed: %s\n", strerror(errno));
                                          }
-                                     }
-                                 } else {
-                                     // If we fail here, print exact error
-                                     fprintf(stderr, "shm_open failed for %s: %s\n", disp->shm_name, strerror(errno));
-                                 }
-                             } else {
-                                 printf("WARN: Display ID %d not found\n", did);
-                             }
-                             send(sd, resp, strlen(resp), 0);
-                             
-                        } else if (strcmp(cmd, "commit") == 0) {
-                             int did = 0;
-                             sscanf(buffer, "commit %d", &did);
-                             jw_display_t *disp = find_display(did);
-                             
-                             if (disp && disp->shm_ptr && disp->texture) {
-                                 // Copy pixels from SHM to Texture
-                                 void *pixels;
-                                 int pitch;
-                                 if (SDL_LockTexture(disp->texture, NULL, &pixels, &pitch) == 0) {
-                                     // SDL Texture Pitch might differ from pure width * 4 if memory aligned
-                                     // But for simplicity if we match 32bit ARGB, it's usually width * 4
-                                     memcpy(pixels, disp->shm_ptr, disp->w * disp->h * 4);
-                                     SDL_UnlockTexture(disp->texture);
-                                 }
-                                 
-                                 SDL_RenderClear(disp->renderer);
-                                 SDL_RenderCopy(disp->renderer, disp->texture, NULL, NULL);
-                                 SDL_RenderPresent(disp->renderer);
-                             }
-                             // Simple ACK
-                             send(sd, "OK", 2, 0);
+                                    }
+                                    
+                                    // Response
+                                    jw_msg_header_t resp_hdr = {0};
+                                    resp_hdr.type = JW_MSG_TYPE_RESP;
+                                    resp_hdr.cmd = JW_CMD_RESPONSE;
+                                    resp_hdr.msg_id = hdr->msg_id;
+                                    resp_hdr.len = sizeof(jw_msg_header_t) + sizeof(jw_payload_response_t);
+                                    
+                                    jw_payload_response_t resp_data = {0};
+                                    resp_data.status = status;
+                                    strncpy(resp_data.data.message, msg_buf, 63);
+                                    
+                                    uint8_t resp_buf[256];
+                                    memcpy(resp_buf, &resp_hdr, sizeof(jw_msg_header_t));
+                                    memcpy(resp_buf + sizeof(jw_msg_header_t), &resp_data, sizeof(jw_payload_response_t));
+                                    resp_buf[6] = jw_calculate_checksum(resp_buf, resp_hdr.len);
+                                    send(sd, resp_buf, resp_hdr.len, 0);
+                                    break;
+                                }
+                                case JW_CMD_COMMIT: {
+                                    if (valread < sizeof(jw_msg_header_t) + sizeof(jw_payload_commit_t)) break;
+                                    jw_payload_commit_t *p = (jw_payload_commit_t*)(buffer + sizeof(jw_msg_header_t));
+                                    
+                                    jw_display_t *disp = find_display(p->display_id);
+                                    if (disp && disp->shm_ptr && disp->texture) {
+                                        void *pixels;
+                                        int pitch;
+                                        if (SDL_LockTexture(disp->texture, NULL, &pixels, &pitch) == 0) {
+                                            memcpy(pixels, disp->shm_ptr, disp->w * disp->h * 4);
+                                            SDL_UnlockTexture(disp->texture);
+                                        }
+                                        SDL_RenderClear(disp->renderer);
+                                        SDL_RenderCopy(disp->renderer, disp->texture, NULL, NULL);
+                                        SDL_RenderPresent(disp->renderer);
+                                    }
+                                    
+                                    // ACK
+                                    jw_msg_header_t resp_hdr = {0};
+                                    resp_hdr.type = JW_MSG_TYPE_RESP;
+                                    resp_hdr.cmd = JW_CMD_RESPONSE;
+                                    resp_hdr.msg_id = hdr->msg_id;
+                                    resp_hdr.len = sizeof(jw_msg_header_t) + sizeof(jw_payload_response_t); // Fixed length response
+                                    
+                                    jw_payload_response_t resp_data = {0};
+                                    resp_data.status = 0;
+                                    
+                                    uint8_t resp_buf[256];
+                                    memcpy(resp_buf, &resp_hdr, sizeof(jw_msg_header_t));
+                                    memcpy(resp_buf + sizeof(jw_msg_header_t), &resp_data, sizeof(jw_payload_response_t));
+                                    resp_buf[6] = jw_calculate_checksum(resp_buf, resp_hdr.len);
+                                    send(sd, resp_buf, resp_hdr.len, 0);
+                                    break;
+                                }
+                                default:
+                                    printf("Unknown CMD: %d\n", hdr->cmd);
+                            }
                         }
                     }
                 }
@@ -267,7 +314,7 @@ int main(int argc, char *argv[]) {
     
     // Cleanup
     close(server_fd);
-    unlink(SOCKET_PATH);
+    unlink(JW_MT_SOCKET_PATH);
     SDL_Quit();
     return 0;
 }
