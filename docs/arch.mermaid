@@ -1,0 +1,29 @@
+architecture-beta
+	group runtime(cloud)[JingWei Runtime]
+	group core(server)[Core Layer] in runtime
+	group adapt(cloud)[Proxy and Platform] in runtime
+	group io(disk)[Resources and Output] in runtime
+
+	service app(server)[Examples and User App]
+	service ctx(server)[jw_context] in core
+	service loop(server)[Event Loop] in core
+	service display(server)[Display One To One] in core
+	service layers(disk)[Layer Stack] in core
+	service buffer(disk)[Framebuffer and Buffers] in io
+	service proxy(server)[Proxy] in adapt
+	service events(internet)[Input and System Events] in adapt
+	service backend(server)[fbdev drm sdl] in adapt
+	service accel(server)[soft g2d gl] in adapt
+
+	app:R --> L:ctx
+	ctx:B --> T:loop
+	ctx:R --> L:display
+	display:B --> T:layers
+	layers:R --> L:buffer
+	loop:R --> L:events
+	loop:B --> T:proxy
+	display:R --> L:proxy
+	proxy:R --> L:backend
+	proxy:B --> T:accel
+	accel:L --> R:buffer
+	events:B --> T:proxy

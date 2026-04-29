@@ -1,0 +1,37 @@
+sequenceDiagram
+    actor ClientA as Client 1
+    actor ClientB as Client 2
+    participant Socket as Unix Domain Socket
+    participant Server as JingWei Host and Proxy
+    participant Display as Display and Layer Manager
+    participant Accel as Accelerator and Backend
+
+    Note over ClientA,Server: Header = TYPE(1) | CMD(1) | LEN(2) | ID(2) | CHECKSUM(1) | PAYLOAD(N)
+
+    ClientA-)Socket: connect()
+    ClientB-)Socket: connect()
+    Socket->>Server: accept client sessions
+    ClientA->>Socket: CREATE_LAYER or UPDATE_LAYER
+    Socket->>+Server: decode frame and validate length
+    Note right of Server: checksum = header bytes + selected payload byte
+    Server->>Server: validate_checksum(msg, len)
+    alt valid frame
+        Server->>Display: mutate display or layer state
+        Display->>Accel: compose dirty regions
+        Accel-->>Display: render complete
+        Display-->>Server: commit framebuffer
+        Server-->>Socket: RESPONSE or EVENT or ACK
+        Socket-->>ClientA: result with message id
+    else invalid frame
+        Server-->>Socket: protocol error
+        Socket-->>ClientA: checksum or format error
+    end
+    par broadcast events
+        Display-->>Server: vsync or system event
+        Server-->>Socket: notify subscribed clients
+        Socket-->>ClientA: EVENT frame
+        Socket-->>ClientB: EVENT frame
+    and concurrent request
+        ClientB->>Socket: UPDATE_LAYER or DESTROY_LAYER
+        Socket->>Server: dispatch second client request
+    end

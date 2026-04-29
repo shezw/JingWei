@@ -1,0 +1,51 @@
+flowchart TB
+    subgraph Core[Core]
+        ctx[jw_context<br/>global runtime context]
+        display[jw_display<br/>1:1 display object]
+        layer[jw_layer<br/>flat layer stack]
+        buffer[jw_buffer<br/>framebuffer and surfaces]
+    end
+
+    subgraph Proxy[Proxy]
+        proxyInst[jw_proxy]
+        proxyOps[jw_proxy_ops]
+        backends[backend_fbdev<br/>backend_drm<br/>backend_sdl]
+    end
+
+    subgraph Accelerator[Accelerator]
+        accel[jw_accelerator]
+        accelOps[jw_accelerator_ops]
+        accelImpl[soft renderer<br/>g2d<br/>OpenGL ES]
+    end
+
+    subgraph Event[Event]
+        loop[jw_event_loop_run]
+        dispatch[jw_dispatch_event]
+        evtypes[touch mouse key system vsync]
+    end
+
+    subgraph Platform[Platform]
+        sys[time log thread fs]
+        input[input adapters and evdev]
+    end
+
+    subgraph Utils[Utils]
+        helpers[logging memory helpers]
+    end
+
+    loop --> dispatch
+    evtypes --> dispatch
+    input --> dispatch
+    dispatch --> ctx
+    ctx --> display
+    display --> layer
+    display --> buffer
+    display --> proxyInst
+    proxyInst --> proxyOps
+    proxyInst --> backends
+    proxyInst --> accel
+    accel --> accelOps
+    accel --> accelImpl
+    sys --> backends
+    helpers --> ctx
+    helpers --> loop
