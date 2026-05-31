@@ -1,0 +1,13 @@
+if(SDL2_FOUND OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_executable(fbdev_demo fbdev_demo.c)
+    target_link_libraries(fbdev_demo PRIVATE jingwei)
+    message(STATUS "Enabled fbdev_demo")
+else()
+    message(STATUS "SDL2 not found, skipping fbdev_demo on this platform")
+endif()
+
+if(SDL2_FOUND)
+    add_executable(external_buffer_demo external_buffer_demo.c)
+    target_link_libraries(external_buffer_demo PRIVATE jingwei)
+    message(STATUS "Enabled external_buffer_demo")
+endif()
