@@ -4,11 +4,21 @@ set(JINGWEI_SOURCES
     core/jw_context.c
     core/jw_display.c
     event/jw_event.c
-    platform/backend/fbdev/jw_backend_fbdev.c
-    platform/backend/sdl/jw_backend_sdl.c
     platform/sys/jw_time.c
     proxy/jw_proxy.c
 )
+
+if(JINGWEI_ENABLE_FBDEV_BACKEND)
+    list(APPEND JINGWEI_SOURCES platform/backend/fbdev/jw_backend_fbdev.c)
+else()
+    list(APPEND JINGWEI_SOURCES platform/backend/fbdev/jw_backend_fbdev_stub.c)
+endif()
+
+if(JINGWEI_ENABLE_SDL_BACKEND)
+    list(APPEND JINGWEI_SOURCES platform/backend/sdl/jw_backend_sdl.c)
+else()
+    list(APPEND JINGWEI_SOURCES platform/backend/sdl/jw_backend_sdl_stub.c)
+endif()
 
 add_library(jingwei STATIC ${JINGWEI_SOURCES})
 target_include_directories(jingwei
@@ -16,7 +26,7 @@ target_include_directories(jingwei
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-if(SDL2_FOUND)
+if(JINGWEI_ENABLE_SDL_BACKEND AND SDL2_FOUND)
     target_compile_definitions(jingwei PRIVATE JW_HAVE_SDL2=1)
     target_include_directories(jingwei PRIVATE ${SDL2_INCLUDE_DIRS})
     target_link_libraries(jingwei PUBLIC ${SDL2_LIBRARIES})
