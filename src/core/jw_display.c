@@ -35,6 +35,23 @@ jw_display_t *jw_display_create(int width, int height, jw_proxy_t *proxy)
         return NULL;
     }
 
+    if (proxy->width > 0 && proxy->height > 0 &&
+        (proxy->width != display->width || proxy->height != display->height)) {
+        jw_buffer_t *framebuffer = jw_buffer_create(proxy->width, proxy->height);
+        if (!framebuffer) {
+            if (proxy->ops && proxy->ops->deinit) {
+                proxy->ops->deinit(proxy);
+            }
+            jw_buffer_destroy(display->framebuffer);
+            free(display);
+            return NULL;
+        }
+        jw_buffer_destroy(display->framebuffer);
+        display->framebuffer = framebuffer;
+        display->width = proxy->width;
+        display->height = proxy->height;
+    }
+
     return display;
 }
 
