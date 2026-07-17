@@ -1,0 +1,13 @@
+# JingWei
+# .dockerignore    2026-07-18
+#
+# @link    : https://github.com/shezw/JingWei
+# @author  : shezw
+# @email   : hello@shezw.com
+
+.agent/
+.git/
+build/
+test-results/
+artifacts/
+WebKitBuild/

@@ -1,0 +1,11 @@
+# JingWei
+# compose.bind.yaml    2026-07-18
+#
+# @link    : https://github.com/shezw/JingWei
+# @author  : shezw
+# @email   : hello@shezw.com
+
+services:
+  wpe-dev:
+    volumes:
+      - .:/workspace/JingWei:ro

@@ -1,0 +1,42 @@
+# JingWei
+# compose.yaml    2026-07-18
+#
+# @link    : https://github.com/shezw/JingWei
+# @author  : shezw
+# @email   : hello@shezw.com
+
+services:
+  wpe-dev:
+    platform: ${WPE_DOCKER_PLATFORM:-linux/arm64}
+    build:
+      context: .
+      dockerfile: docker/wpe-dev/Dockerfile
+      target: ${WPE_DOCKER_TARGET:-wpe-dev}
+    init: true
+    stdin_open: true
+    tty: true
+    shm_size: 1gb
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      WPE_BUILD_JOBS: ${WPE_BUILD_JOBS:-3}
+      WPE_BUILD_TYPE: ${WPE_BUILD_TYPE:-Release}
+      WPE_PROFILE: ${WPE_PROFILE:-container}
+      WPE_VERSION: ${WPE_VERSION:-2.52.5}
+    volumes:
+      - jingwei-build:/workspace/jingwei-build
+      - wpe-build:/workspace/wpe/build
+      - wpe-downloads:/workspace/wpe/downloads
+      - wpe-prefix:/workspace/wpe/prefix
+      - wpe-source:/workspace/wpe/src
+      - compiler-cache:/workspace/cache/ccache
+    ports:
+      - 127.0.0.1:5900:5900
+
+volumes:
+  compiler-cache:
+  jingwei-build:
+  wpe-build:
+  wpe-downloads:
+  wpe-prefix:
+  wpe-source:
