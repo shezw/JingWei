@@ -17,6 +17,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <jingwei.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -32,10 +34,6 @@ typedef enum jw_status {
     JW_STATUS_UNAVAILABLE = -7,
     JW_STATUS_IO_ERROR = -8
 } jw_status_t;
-
-typedef enum jw_pixel_format {
-    JW_PIXEL_FORMAT_BGRA8888 = 1
-} jw_pixel_format_t;
 
 typedef struct jw_frame {
     const void *pixels;
@@ -57,7 +55,7 @@ typedef enum jw_input_event_type {
     JW_INPUT_EVENT_POINTER = 1,
     JW_INPUT_EVENT_KEY = 2,
     /* Consumer must clear all held key and pointer-button state. */
-    JW_EVENT_INPUT_RESET = 3
+    JW_INPUT_EVENT_RESET = 3
 } jw_input_event_type_t;
 
 typedef struct jw_pointer_event {
@@ -107,7 +105,7 @@ void jw_event_queue_destroy(jw_event_queue_t *queue);
 /*
  * A full queue coalesces a trailing pointer move. If a key or pointer-button
  * release cannot be retained without losing another release, all pending
- * events are replaced by one JW_EVENT_INPUT_RESET. RESET means that every key
+ * events are replaced by one JW_INPUT_EVENT_RESET. RESET means that every key
  * and pointer button is released; its union payload is unused.
  */
 jw_status_t jw_event_queue_push(
@@ -121,7 +119,7 @@ jw_status_t jw_event_queue_get_stats(
     const jw_event_queue_t *queue,
     jw_event_queue_stats_t *stats);
 
-/* Dimensions must be positive; owned BGRA storage is capped at INT_MAX bytes. */
+/* Dimensions must be positive; owned ARGB storage is capped at INT_MAX bytes. */
 jw_surface_t *jw_surface_create(
     uint32_t width,
     uint32_t height,

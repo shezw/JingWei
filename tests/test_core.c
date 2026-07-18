@@ -51,7 +51,7 @@ static int test_frame_stride_and_damage(void)
     frame.width = 2;
     frame.height = 2;
     frame.stride = 12;
-    frame.format = JW_PIXEL_FORMAT_BGRA8888;
+    frame.format = JW_PIXEL_FORMAT_ARGB8888;
 
     first_damage.x = 0;
     first_damage.y = 0;
@@ -111,7 +111,7 @@ static int test_invalid_frames(void)
     frame.width = 2;
     frame.height = 2;
     frame.stride = 8;
-    frame.format = JW_PIXEL_FORMAT_BGRA8888;
+    frame.format = JW_PIXEL_FORMAT_ARGB8888;
 
     TEST_CHECK(jw_surface_submit_frame(surface, &frame, NULL, 0, &serial) ==
         JW_STATUS_OK);
@@ -132,7 +132,7 @@ static int test_invalid_frames(void)
     frame.format = (jw_pixel_format_t)99;
     TEST_CHECK(jw_surface_submit_frame(surface, &frame, NULL, 0, &serial) ==
         JW_STATUS_UNSUPPORTED);
-    frame.format = JW_PIXEL_FORMAT_BGRA8888;
+    frame.format = JW_PIXEL_FORMAT_ARGB8888;
     damage.x = 1;
     damage.y = 0;
     damage.width = 2;
@@ -234,7 +234,7 @@ static int test_event_release_safety(void)
     TEST_CHECK(jw_event_queue_push(queue, &event, &event_id) == JW_STATUS_OK);
     TEST_CHECK(event_id == 6);
     TEST_CHECK(jw_event_queue_pop(queue, &output) == JW_STATUS_OK);
-    TEST_CHECK(output.event_id == 6 && output.type == JW_EVENT_INPUT_RESET);
+    TEST_CHECK(output.event_id == 6 && output.type == JW_INPUT_EVENT_RESET);
     TEST_CHECK(jw_event_queue_pop(queue, &output) == JW_STATUS_EMPTY);
 
     memset(&event, 0, sizeof(event));
@@ -256,7 +256,7 @@ static int test_event_release_safety(void)
     TEST_CHECK(jw_event_queue_push(queue, &event, &event_id) == JW_STATUS_OK);
     TEST_CHECK(event_id == 9);
     TEST_CHECK(jw_event_queue_pop(queue, &output) == JW_STATUS_OK);
-    TEST_CHECK(output.event_id == 9 && output.type == JW_EVENT_INPUT_RESET);
+    TEST_CHECK(output.event_id == 9 && output.type == JW_INPUT_EVENT_RESET);
     TEST_CHECK(jw_event_queue_pop(queue, &output) == JW_STATUS_EMPTY);
 
     TEST_CHECK(jw_event_queue_get_stats(queue, &stats) == JW_STATUS_OK);
@@ -292,7 +292,7 @@ static int test_event_release_safety(void)
         JW_STATUS_OK);
     TEST_CHECK(event_id == 4);
     TEST_CHECK(jw_event_queue_pop(cross_device_queue, &output) == JW_STATUS_OK);
-    TEST_CHECK(output.event_id == 4 && output.type == JW_EVENT_INPUT_RESET);
+    TEST_CHECK(output.event_id == 4 && output.type == JW_INPUT_EVENT_RESET);
     TEST_CHECK(jw_event_queue_pop(cross_device_queue, &output) ==
         JW_STATUS_EMPTY);
     TEST_CHECK(jw_event_queue_get_stats(cross_device_queue, &stats) ==

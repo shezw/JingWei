@@ -30,7 +30,3 @@ target_link_libraries(jw-wpe-browser
         JingWei::wpe
         PkgConfig::WPE_WEBKIT
 )
-
-target_compile_definitions(jw-wpe-browser PRIVATE
-    JW_BROWSER_DEFAULT_URL="file://${PROJECT_SOURCE_DIR}/tests/fixtures/wpe-vnc-smoke.html"
-)

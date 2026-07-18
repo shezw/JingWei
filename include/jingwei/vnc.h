@@ -17,6 +17,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <jingwei.h>
 #include <jingwei/core.h>
 
 #ifdef __cplusplus
@@ -71,6 +72,16 @@ jw_status_t jw_vnc_enqueue_key(
     int pressed,
     uint32_t keysym,
     uint64_t *event_id);
+
+/*
+ * Creates a display proxy that owns the release-safe surface and VNC backend.
+ * The proxy copies config strings and starts the backend when its display is
+ * created. The returned proxy is consumed by jw_display_create().
+ */
+jw_proxy_t *jw_proxy_create_vnc(
+    int width,
+    int height,
+    const jw_vnc_config_t *config);
 
 #ifdef __cplusplus
 }

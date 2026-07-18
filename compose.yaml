@@ -60,7 +60,7 @@ services:
       PKG_CONFIG_PATH: /workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/lib/pkgconfig:/workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/lib/aarch64-linux-gnu/pkgconfig:/workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/lib/x86_64-linux-gnu/pkgconfig:/workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/share/pkgconfig
       LD_LIBRARY_PATH: /workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/lib:/workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/lib/aarch64-linux-gnu:/workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/lib/x86_64-linux-gnu
       JINGWEI_BROWSER_BIN: /workspace/jingwei-build/apps/jw-wpe-browser/jw-wpe-browser
-      JINGWEI_BROWSER_URL: ${JINGWEI_BROWSER_URL:-about:blank}
+      JINGWEI_BROWSER_URL: ${JINGWEI_BROWSER_URL:-https://shezw.github.io/cube3d/demo/index.html}
       JINGWEI_CACHE_MODEL: ${JINGWEI_CACHE_MODEL:-document-viewer}
       JINGWEI_WAIT_INTERVAL: ${JINGWEI_WAIT_INTERVAL:-5}
       JINGWEI_WAIT_TIMEOUT: ${JINGWEI_WAIT_TIMEOUT:-900}

@@ -110,8 +110,8 @@ Docker/OrbStack 在 Mac 上运行的是 Linux VM，当前容器没有 `/dev/dri`
 
 推荐分两步：
 
-1. `jingwei_wpe` 接收 WPEPlatform 的 SHM ARGB8888 buffer，并复制到 JingWei BGRA8888 surface。
-2. `jw_vnc_backend` 把 JingWei CPU framebuffer 和 damage rectangles 交给 LibVNCServer；Mac 使用 VNC 客户端查看，输入事件再转换为 WPE pointer/key event。
+1. `jingwei_wpe` 把 WPEPlatform 的 SHM ARGB8888 buffer 包装为借用型 `jw_buffer_t`，通过 `jw_display_present_buffer_rects()` 提交给 ladybone display。
+2. VNC proxy 同步复制 ARGB8888 framebuffer 和 damage rectangles 到 LibVNCServer；Mac 使用 VNC 客户端查看，输入事件经 proxy、event manager 和 `jw_context_poll()` 转换为 WPE pointer/key event。
 
 WPE WebKit 2.52.5 的新 WPEPlatform 已同时提供 `WPEBufferDMABuf` 和 `WPEBufferSHM`。其 surfaceless renderer 在不能导出 DMA-BUF 时会选择 SharedMemory swap chain，因此容器预览可以直接消费 SHM buffer，不需要先设计新的跨虚拟机图形协议。该路径会通过 `glReadPixels` 回读，适合功能开发和视觉测试，不代表目标设备的零拷贝性能。
 

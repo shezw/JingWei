@@ -100,7 +100,7 @@ jw_status_t jw_event_queue_push(
     }
     if (event->type != JW_INPUT_EVENT_POINTER &&
         event->type != JW_INPUT_EVENT_KEY &&
-        event->type != JW_EVENT_INPUT_RESET) {
+        event->type != JW_INPUT_EVENT_RESET) {
         return JW_STATUS_INVALID_ARGUMENT;
     }
     if (event->type == JW_INPUT_EVENT_KEY &&
@@ -115,7 +115,7 @@ jw_status_t jw_event_queue_push(
     protected_release =
         (event->type == JW_INPUT_EVENT_KEY && event->data.key.pressed == 0) ||
         pointer_release;
-    force_reset = event->type == JW_EVENT_INPUT_RESET;
+    force_reset = event->type == JW_INPUT_EVENT_RESET;
 
     if (queue->count == queue->capacity) {
         tail = (queue->head + queue->count - 1U) % queue->capacity;
@@ -153,7 +153,7 @@ jw_status_t jw_event_queue_push(
         queue->count = 0;
         queue->overflow_count += dropped;
         memset(&queued_event, 0, sizeof(queued_event));
-        queued_event.type = JW_EVENT_INPUT_RESET;
+        queued_event.type = JW_INPUT_EVENT_RESET;
     } else {
         queued_event = *event;
     }
@@ -163,7 +163,7 @@ jw_status_t jw_event_queue_push(
     tail = (queue->head + queue->count) % queue->capacity;
     queue->events[tail] = queued_event;
     queue->count += 1;
-    if (queued_event.type == JW_EVENT_INPUT_RESET) {
+    if (queued_event.type == JW_INPUT_EVENT_RESET) {
         queue->last_pointer_buttons = 0;
         queue->has_pointer_state = 1;
     } else if (event->type == JW_INPUT_EVENT_POINTER) {

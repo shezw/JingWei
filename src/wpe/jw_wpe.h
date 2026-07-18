@@ -16,8 +16,7 @@
 #ifndef JINGWEI_WPE_H
 #define JINGWEI_WPE_H
 
-#include <jingwei/core.h>
-#include <jingwei/vnc.h>
+#include <jingwei.h>
 #include <wpe/wpe-platform.h>
 
 G_BEGIN_DECLS
@@ -27,13 +26,10 @@ G_BEGIN_DECLS
 GType jw_wpe_display_get_type(void);
 
 /*
- * The surface and optional VNC backend are borrowed and must outlive the
- * returned display. Supplying a VNC backend makes each accepted frame visible
- * to VNC clients; otherwise frames are submitted only to the JingWei surface.
+ * The platform display is borrowed and must outlive the returned WPE display.
+ * Accepted WPE frames are submitted through its configured JingWei proxy.
  */
-WPEDisplay *jw_wpe_display_new(
-    jw_surface_t *surface,
-    jw_vnc_backend_t *vnc_backend);
+WPEDisplay *jw_wpe_display_new(jw_display_t *platform_display);
 
 /* The display emits "first-frame" after its first successful JingWei submit. */
 guint64 jw_wpe_display_get_frame_count(WPEDisplay *display);

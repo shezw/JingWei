@@ -17,7 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define JW_BGRA8888_BYTES_PER_PIXEL 4U
+#define JW_ARGB8888_BYTES_PER_PIXEL 4U
 
 static int jw_buffer_size(
     uint32_t width,
@@ -28,11 +28,11 @@ static int jw_buffer_size(
     uint32_t row_bytes;
 
     if (width == 0 || height == 0 ||
-        width > UINT32_MAX / JW_BGRA8888_BYTES_PER_PIXEL) {
+        width > UINT32_MAX / JW_ARGB8888_BYTES_PER_PIXEL) {
         return 0;
     }
 
-    row_bytes = width * JW_BGRA8888_BYTES_PER_PIXEL;
+    row_bytes = width * JW_ARGB8888_BYTES_PER_PIXEL;
     if ((size_t)height > SIZE_MAX / row_bytes) {
         return 0;
     }
@@ -85,7 +85,7 @@ static jw_status_t jw_validate_frame(
     if (surface == NULL || frame == NULL || frame->pixels == NULL) {
         return JW_STATUS_INVALID_ARGUMENT;
     }
-    if (frame->format != JW_PIXEL_FORMAT_BGRA8888) {
+    if (frame->format != JW_PIXEL_FORMAT_ARGB8888) {
         return JW_STATUS_UNSUPPORTED;
     }
     if (frame->width != surface->width || frame->height != surface->height ||
@@ -127,8 +127,8 @@ static void jw_copy_frame_locked(
 
     for (index = 0; index < damage_count; ++index) {
         const jw_damage_t *damage = &damages[index];
-        size_t copy_size = (size_t)damage->width * JW_BGRA8888_BYTES_PER_PIXEL;
-        size_t x_offset = (size_t)damage->x * JW_BGRA8888_BYTES_PER_PIXEL;
+        size_t copy_size = (size_t)damage->width * JW_ARGB8888_BYTES_PER_PIXEL;
+        size_t x_offset = (size_t)damage->x * JW_ARGB8888_BYTES_PER_PIXEL;
 
         for (row = damage->y; row < damage->y + damage->height; ++row) {
             memcpy(
@@ -227,7 +227,7 @@ jw_status_t jw_surface_get_info(
     info->height = surface->height;
     info->stride = surface->stride;
     info->size = surface->size;
-    info->format = JW_PIXEL_FORMAT_BGRA8888;
+    info->format = JW_PIXEL_FORMAT_ARGB8888;
     info->serial = surface->serial;
     pthread_mutex_unlock(&mutable_surface->frame_mutex);
     return JW_STATUS_OK;

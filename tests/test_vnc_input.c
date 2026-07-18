@@ -464,7 +464,7 @@ static int test_input_mapping(void)
         frame.width = 64;
         frame.height = 48;
         frame.stride = 64 * 4;
-        frame.format = JW_PIXEL_FORMAT_BGRA8888;
+        frame.format = JW_PIXEL_FORMAT_ARGB8888;
         TEST_CHECK(jw_vnc_backend_publish_frame(
             backend, &frame, NULL, 0, &serial) == JW_STATUS_OK);
         TEST_CHECK(serial == 1);
@@ -601,7 +601,7 @@ static int test_vnc_network(void)
     frame.width = 2;
     frame.height = 2;
     frame.stride = 8;
-    frame.format = JW_PIXEL_FORMAT_BGRA8888;
+    frame.format = JW_PIXEL_FORMAT_ARGB8888;
     NETWORK_CHECK(jw_vnc_backend_publish_frame(
         backend, &frame, &(jw_damage_t){ 0, 0, 1, 1 }, 1, NULL) ==
         JW_STATUS_OK);

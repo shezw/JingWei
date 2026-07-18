@@ -33,6 +33,23 @@ add_test(NAME jingwei.core.invalid_frames COMMAND jingwei_core_tests invalid)
 add_test(NAME jingwei.core.event_fifo COMMAND jingwei_core_tests fifo)
 add_test(NAME jingwei.core.event_release_safety COMMAND jingwei_core_tests release)
 add_test(NAME jingwei.vnc.input_mapping COMMAND jingwei_vnc_input_tests mapping)
+
+add_executable(jingwei_vnc_proxy_tests test_vnc_proxy.c)
+target_link_libraries(jingwei_vnc_proxy_tests PRIVATE JingWei::jingwei)
+target_compile_definitions(jingwei_vnc_proxy_tests PRIVATE
+    JINGWEI_TEST_HAVE_LIBVNCSERVER=${JINGWEI_HAVE_LIBVNCSERVER}
+)
+if(JINGWEI_HAVE_LIBVNCSERVER)
+    target_link_libraries(jingwei_vnc_proxy_tests PRIVATE
+        PkgConfig::LIBVNCSERVER)
+endif()
+set_target_properties(jingwei_vnc_proxy_tests PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED ON
+    C_EXTENSIONS OFF
+)
+add_test(NAME jingwei.vnc.proxy_lifecycle COMMAND jingwei_vnc_proxy_tests)
+set_tests_properties(jingwei.vnc.proxy_lifecycle PROPERTIES TIMEOUT 30)
 if(JINGWEI_HAVE_LIBVNCSERVER)
     add_test(NAME jingwei.vnc.password_validation
         COMMAND jingwei_vnc_input_tests password)

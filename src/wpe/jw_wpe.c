@@ -29,8 +29,7 @@ typedef struct _JWWPEDisplayClass JWWPEDisplayClass;
 
 struct _JWWPEView {
     WPEView parent_instance;
-    jw_surface_t *surface;
-    jw_vnc_backend_t *vnc_backend;
+    jw_display_t *platform_display;
     WPEBuffer *pending_buffer;
     WPEBuffer *committed_buffer;
     GSource *frame_source;
@@ -43,8 +42,7 @@ struct _JWWPEViewClass {
 
 struct _JWWPEDisplay {
     WPEDisplay parent_instance;
-    jw_surface_t *surface;
-    jw_vnc_backend_t *vnc_backend;
+    jw_display_t *platform_display;
     gboolean connected;
     guint64 frame_count;
 };
@@ -204,7 +202,8 @@ static gboolean jw_wpe_frame_size_is_valid(
     gsize row_bytes;
     gsize required_size;
 
-    if (width <= 0 || height <= 0 || (gsize)width > G_MAXSIZE / 4U) {
+    if (width <= 0 || height <= 0 || stride > G_MAXINT ||
+        (gsize)width > G_MAXSIZE / 4U) {
         return FALSE;
     }
 
@@ -218,19 +217,27 @@ static gboolean jw_wpe_frame_size_is_valid(
     return size >= required_size;
 }
 
-static gboolean jw_wpe_damage_from_rectangles(
+static gboolean jw_wpe_rects_from_rectangles(
     const WPERectangle *rectangles,
     guint rectangle_count,
     int frame_width,
     int frame_height,
-    jw_damage_t **damages,
+    jw_rect_t **rects,
     GError **error)
 {
     guint index;
 
-    *damages = NULL;
+    *rects = NULL;
     if (rectangle_count == 0) {
         return TRUE;
+    }
+    if (rectangle_count > G_MAXINT) {
+        g_set_error_literal(
+            error,
+            WPE_VIEW_ERROR,
+            WPE_VIEW_ERROR_RENDER_FAILED,
+            "WPE supplied too many damage rectangles");
+        return FALSE;
     }
     if (rectangles == NULL) {
         g_set_error_literal(
@@ -241,8 +248,8 @@ static gboolean jw_wpe_damage_from_rectangles(
         return FALSE;
     }
 
-    *damages = g_try_new(jw_damage_t, rectangle_count);
-    if (*damages == NULL) {
+    *rects = g_try_new(jw_rect_t, rectangle_count);
+    if (*rects == NULL) {
         g_set_error_literal(
             error,
             WPE_VIEW_ERROR,
@@ -269,14 +276,14 @@ static gboolean jw_wpe_damage_from_rectangles(
                 rectangle->y,
                 rectangle->width,
                 rectangle->height);
-            g_clear_pointer(damages, g_free);
+            g_clear_pointer(rects, g_free);
             return FALSE;
         }
 
-        (*damages)[index].x = (uint32_t)rectangle->x;
-        (*damages)[index].y = (uint32_t)rectangle->y;
-        (*damages)[index].width = (uint32_t)rectangle->width;
-        (*damages)[index].height = (uint32_t)rectangle->height;
+        (*rects)[index].x = rectangle->x;
+        (*rects)[index].y = rectangle->y;
+        (*rects)[index].w = rectangle->width;
+        (*rects)[index].h = rectangle->height;
     }
     return TRUE;
 }
@@ -296,9 +303,9 @@ static gboolean jw_wpe_view_render_buffer(
     int width;
     int height;
     guint stride;
-    jw_frame_t frame;
-    jw_damage_t *damages = NULL;
-    jw_status_t status;
+    jw_buffer_t *jingwei_buffer;
+    jw_rect_t *rects = NULL;
+    int present_result;
     gint64 now;
     gint64 next_frame_time;
 
@@ -337,7 +344,7 @@ static gboolean jw_wpe_view_render_buffer(
         error,
         WPE_VIEW_ERROR,
         WPE_VIEW_ERROR_RENDER_FAILED,
-        "WPE ARGB8888 to JingWei BGRA8888 requires a little-endian host");
+        "WPE SHM ARGB8888 requires a little-endian host");
     return FALSE;
 #endif
 
@@ -356,47 +363,47 @@ static gboolean jw_wpe_view_render_buffer(
         return FALSE;
     }
 
-    if (!jw_wpe_damage_from_rectangles(
+    if (!jw_wpe_rects_from_rectangles(
             damage_rectangles,
             damage_count,
             width,
             height,
-            &damages,
+            &rects,
             error)) {
         return FALSE;
     }
 
-    frame.pixels = pixels;
-    frame.size = size;
-    frame.width = (uint32_t)width;
-    frame.height = (uint32_t)height;
-    frame.stride = stride;
-    frame.format = JW_PIXEL_FORMAT_BGRA8888;
-
-    if (jw_view->vnc_backend != NULL) {
-        status = jw_vnc_backend_publish_frame(
-            jw_view->vnc_backend,
-            &frame,
-            damages,
-            damage_count,
-            NULL);
-    } else {
-        status = jw_surface_submit_frame(
-            jw_view->surface,
-            &frame,
-            damages,
-            damage_count,
-            NULL);
-    }
-    g_free(damages);
-
-    if (status != JW_STATUS_OK) {
-        g_set_error(
+    jingwei_buffer = jw_buffer_wrap_pixels(
+        width,
+        height,
+        (int)stride,
+        JW_PIXEL_FORMAT_ARGB8888,
+        (void *)pixels,
+        NULL,
+        NULL);
+    if (jingwei_buffer == NULL) {
+        g_free(rects);
+        g_set_error_literal(
             error,
             WPE_VIEW_ERROR,
             WPE_VIEW_ERROR_RENDER_FAILED,
-            "JingWei rejected the WPE frame: %s",
-            jw_status_string(status));
+            "Failed to wrap the WPE SHM buffer for JingWei");
+        return FALSE;
+    }
+    present_result = jw_display_present_buffer_rects(
+        jw_view->platform_display,
+        jingwei_buffer,
+        rects,
+        (int)damage_count);
+    jw_buffer_destroy(jingwei_buffer);
+    g_free(rects);
+
+    if (present_result != 0) {
+        g_set_error_literal(
+            error,
+            WPE_VIEW_ERROR,
+            WPE_VIEW_ERROR_RENDER_FAILED,
+            "JingWei rejected the WPE frame");
         return FALSE;
     }
 
@@ -438,8 +445,7 @@ static void jw_wpe_view_class_init(JWWPEViewClass *view_class)
 
 static void jw_wpe_view_init(JWWPEView *view)
 {
-    view->surface = NULL;
-    view->vnc_backend = NULL;
+    view->platform_display = NULL;
     view->pending_buffer = NULL;
     view->committed_buffer = NULL;
     view->frame_source = NULL;
@@ -463,8 +469,7 @@ static WPEView *jw_wpe_display_create_view(WPEDisplay *display)
     JWWPEView *view;
 
     view = g_object_new(jw_wpe_view_get_type(), "display", display, NULL);
-    view->surface = jw_display->surface;
-    view->vnc_backend = jw_display->vnc_backend;
+    view->platform_display = jw_display->platform_display;
     return WPE_VIEW(view);
 }
 
@@ -553,8 +558,7 @@ static void jw_wpe_display_class_init(JWWPEDisplayClass *display_class)
 
 static void jw_wpe_display_init(JWWPEDisplay *display)
 {
-    display->surface = NULL;
-    display->vnc_backend = NULL;
+    display->platform_display = NULL;
     display->connected = FALSE;
     display->frame_count = 0;
     wpe_display_set_available_input_devices(
@@ -563,17 +567,14 @@ static void jw_wpe_display_init(JWWPEDisplay *display)
             WPE_AVAILABLE_INPUT_DEVICE_KEYBOARD);
 }
 
-WPEDisplay *jw_wpe_display_new(
-    jw_surface_t *surface,
-    jw_vnc_backend_t *vnc_backend)
+WPEDisplay *jw_wpe_display_new(jw_display_t *platform_display)
 {
     JWWPEDisplay *display;
 
-    g_return_val_if_fail(surface != NULL, NULL);
+    g_return_val_if_fail(platform_display != NULL, NULL);
 
     display = g_object_new(jw_wpe_display_get_type(), NULL);
-    display->surface = surface;
-    display->vnc_backend = vnc_backend;
+    display->platform_display = platform_display;
     return WPE_DISPLAY(display);
 }
 

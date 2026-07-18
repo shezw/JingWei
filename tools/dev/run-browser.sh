@@ -9,6 +9,7 @@
 set -euo pipefail
 
 readonly DEFAULT_BROWSER_BIN="/workspace/jingwei-build/apps/jw-wpe-browser/jw-wpe-browser"
+readonly DEFAULT_BROWSER_URL="https://shezw.github.io/cube3d/demo/index.html"
 readonly DEFAULT_WAIT_TIMEOUT=900
 readonly DEFAULT_WAIT_INTERVAL=5
 
@@ -73,7 +74,7 @@ wait_for_wpe_prefix() {
 
 run_in_container() {
     local browser_bin="${JINGWEI_BROWSER_BIN:-${DEFAULT_BROWSER_BIN}}"
-    local browser_url="${JINGWEI_BROWSER_URL:-about:blank}"
+    local browser_url="${JINGWEI_BROWSER_URL:-${DEFAULT_BROWSER_URL}}"
     local prefix_dir="${WPE_PREFIX_DIR:-/workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}}"
     local timeout="${JINGWEI_WAIT_TIMEOUT:-${DEFAULT_WAIT_TIMEOUT}}"
     local interval="${JINGWEI_WAIT_INTERVAL:-${DEFAULT_WAIT_INTERVAL}}"
@@ -147,7 +148,7 @@ fi
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPOSITORY_DIR="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 readonly COMPOSE_FILE="${REPOSITORY_DIR}/compose.yaml"
-readonly BROWSER_URL="${1:-${JINGWEI_BROWSER_URL:-about:blank}}"
+readonly BROWSER_URL="${1:-${JINGWEI_BROWSER_URL:-${DEFAULT_BROWSER_URL}}}"
 readonly HOST_PORT="${JINGWEI_VNC_HOST_PORT:-5900}"
 readonly WAIT_TIMEOUT="${JINGWEI_WAIT_TIMEOUT:-${DEFAULT_WAIT_TIMEOUT}}"
 
