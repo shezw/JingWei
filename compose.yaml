@@ -64,6 +64,7 @@ services:
       JINGWEI_CACHE_MODEL: ${JINGWEI_CACHE_MODEL:-document-viewer}
       JINGWEI_WAIT_INTERVAL: ${JINGWEI_WAIT_INTERVAL:-5}
       JINGWEI_WAIT_TIMEOUT: ${JINGWEI_WAIT_TIMEOUT:-900}
+      JINGWEI_VNC_PASSWORD_FILE: /run/secrets/jingwei-vnc-password
       JSC_useJIT: ${JINGWEI_JSC_USE_JIT:-false}
       VNC_PORT: ${VNC_PORT:-5900}
       # The container itself drops every capability and keeps no-new-privileges.
@@ -76,6 +77,8 @@ services:
       # cannot persist changes into any source, build, download, or cache volume.
       - jingwei-build:/workspace/jingwei-build:ro
       - wpe-prefix:/workspace/wpe/prefix:ro
+    secrets:
+      - jingwei-vnc-password
     ports:
       - "127.0.0.1:${JINGWEI_VNC_HOST_PORT:-5900}:${VNC_PORT:-5900}"
     command:
@@ -97,3 +100,7 @@ volumes:
   wpe-downloads:
   wpe-prefix:
   wpe-source:
+
+secrets:
+  jingwei-vnc-password:
+    file: ${JINGWEI_VNC_PASSWORD_FILE:-docker/wpe-dev/vnc-password.dev}

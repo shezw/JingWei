@@ -29,6 +29,8 @@ typedef struct jw_vnc_config {
     /* IPv4 TCP port. Zero selects the default RFB port 5900. */
     int port;
     const char *desktop_name;
+    /* Optional 1..8 byte printable ASCII VNC password; copied by create. */
+    const char *password;
 } jw_vnc_config_t;
 
 int jw_vnc_backend_is_available(void);

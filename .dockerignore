@@ -6,6 +6,7 @@
 # @email   : hello@shezw.com
 
 .agent/
+docker/wpe-dev/vnc-password.dev
 .git/
 build/
 test-results/

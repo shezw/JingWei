@@ -58,6 +58,15 @@ WPE 前缀完成后，只刷新 JingWei 源码快照并重编译适配器/浏览
 open vnc://127.0.0.1:5900
 ```
 
+macOS“屏幕共享”提示密码时输入 `jwview52`。这是只用于 loopback 开发预览的兼容密码，不是远程安全边界。需要自定义时准备一个只包含 1–8 个可打印 ASCII 字符的文件：
+
+```bash
+JINGWEI_VNC_PASSWORD_FILE=/absolute/path/to/private-password \
+docker compose up -d --force-recreate jw-browser
+```
+
+Compose 将该文件作为 `/run/secrets/jingwei-vnc-password` 只读挂载；密码不会出现在 Browser 命令行、READY 行或容器环境变量中。经典 VNC Authentication 不加密画面和输入，因此端口仍必须保持 loopback，跨机器访问应另加 SSH/TLS 隧道。
+
 smoke 通过后会保留 `jw-browser` 运行，并在 `test-results/rfb-wpe-e2e/` 保存初始、点击和键盘完成三张 PPM 证据帧。
 
 只验证新的 WPEPlatform/Headless 图形接口（适合日常快速迭代）：

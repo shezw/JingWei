@@ -18,6 +18,8 @@ readonly COMMAND_TIMEOUT="${SMOKE_COMMAND_TIMEOUT:-60}"
 readonly E2E_TIMEOUT="${SMOKE_E2E_TIMEOUT:-60}"
 readonly HOST_PORT="${JINGWEI_VNC_HOST_PORT:-5900}"
 readonly OUTPUT_BASE_DIR="${SMOKE_OUTPUT_DIR:-${REPOSITORY_DIR}/test-results/rfb-wpe-e2e}"
+readonly DEFAULT_PASSWORD_FILE="${REPOSITORY_DIR}/docker/wpe-dev/vnc-password.dev"
+readonly PASSWORD_FILE="${JINGWEI_VNC_PASSWORD_FILE:-${DEFAULT_PASSWORD_FILE}}"
 
 compose=(
     docker compose
@@ -34,6 +36,8 @@ a unique fixture token. The smoke gate verifies:
   - the container becomes healthy;
   - Docker publishes VNC only on the configured Mac loopback port;
   - the new container emitted JW_WPE_READY for the tokenized fixture URL;
+  - RFB offers VNC Authentication without an unauthenticated fallback;
+  - an incorrect password is rejected and the configured password succeeds;
   - a host-side RFB 3.8 client captures the real 1280x720 framebuffer;
   - RFB pointer and exact-token keyboard input produce deterministic changes.
 
@@ -45,6 +49,7 @@ Environment:
   SMOKE_E2E_TIMEOUT    Overall Python client timeout (default: 60)
   SMOKE_OUTPUT_DIR     Parent directory for unique per-token PPM evidence
   JINGWEI_VNC_HOST_PORT  Mac loopback port (default: 5900)
+  JINGWEI_VNC_PASSWORD_FILE  Host password file (default: docker/wpe-dev/vnc-password.dev)
 USAGE
 }
 
@@ -129,6 +134,11 @@ if ! command -v docker >/dev/null 2>&1; then
     exit 127
 fi
 
+if [[ ! -f "${PASSWORD_FILE}" || ! -r "${PASSWORD_FILE}" ]]; then
+    echo "JINGWEI_VNC_PASSWORD_FILE must name a readable host file." >&2
+    exit 66
+fi
+
 echo "Rebuilding JingWei from the current worktree before the smoke gate."
 "${REPOSITORY_DIR}/tools/dev/rebuild-jingwei.sh"
 
@@ -193,6 +203,7 @@ if [[ "${published_endpoint}" != "127.0.0.1:${HOST_PORT}" ]]; then
 fi
 
 run_with_timeout "${E2E_TIMEOUT}" python3 "${SCRIPT_DIR}/rfb-wpe-e2e.py" \
+    --password-file "${PASSWORD_FILE}" \
     --token "${token}" \
     --port "${HOST_PORT}" \
     --timeout "${RFB_TIMEOUT}" \

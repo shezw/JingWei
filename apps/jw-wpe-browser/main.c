@@ -125,6 +125,57 @@ static guint32 jw_browser_event_time(void)
     return (guint32)(g_get_monotonic_time() / 1000);
 }
 
+static void jw_browser_clear_secret(char *secret, gsize length)
+{
+    volatile guint8 *bytes = (volatile guint8 *)secret;
+
+    if (secret == NULL) {
+        return;
+    }
+    while (length > 0) {
+        bytes[--length] = 0;
+    }
+}
+
+static gboolean jw_browser_load_vnc_password(
+    const char *path,
+    char **password,
+    gsize *password_length)
+{
+    char *contents = NULL;
+    gsize length = 0;
+    gsize index;
+
+    if (path == NULL || path[0] == '\0' || password == NULL ||
+        password_length == NULL ||
+        !g_file_get_contents(path, &contents, &length, NULL)) {
+        return FALSE;
+    }
+    if (length > 0 && contents[length - 1] == '\n') {
+        contents[--length] = '\0';
+        if (length > 0 && contents[length - 1] == '\r') {
+            contents[--length] = '\0';
+        }
+    }
+    if (length == 0 || length > 8) {
+        jw_browser_clear_secret(contents, length);
+        g_free(contents);
+        return FALSE;
+    }
+    for (index = 0; index < length; ++index) {
+        guint8 value = (guint8)contents[index];
+
+        if (value < 0x21U || value > 0x7eU) {
+            jw_browser_clear_secret(contents, length);
+            g_free(contents);
+            return FALSE;
+        }
+    }
+    *password = contents;
+    *password_length = length;
+    return TRUE;
+}
+
 static WPEModifiers jw_browser_modifiers(
     const jw_browser_state_t *state,
     guint buttons)
@@ -445,14 +496,17 @@ int main(int argc, char **argv)
     const char *url = argc > 1 ? argv[1] : JW_BROWSER_DEFAULT_URL;
     const char *port_value = g_getenv("VNC_PORT");
     const char *cache_model_value = g_getenv("JINGWEI_CACHE_MODEL");
+    const char *password_file = g_getenv("JINGWEI_VNC_PASSWORD_FILE");
     jw_browser_state_t state = { 0 };
-    jw_vnc_config_t vnc_config;
+    jw_vnc_config_t vnc_config = { 0 };
     jw_status_t status;
     WebKitCacheModel cache_model;
     WPEToplevel *toplevel;
     GError *error = NULL;
     int port;
     int result = EXIT_FAILURE;
+    char *vnc_password = NULL;
+    gsize vnc_password_length = 0;
 
     if (argc > 2) {
         g_printerr("Usage: %s [URL]\n", argv[0]);
@@ -473,6 +527,15 @@ int main(int argc, char **argv)
         g_printerr("JingWei was built without LibVNCServer support\n");
         return EXIT_FAILURE;
     }
+    if (!jw_browser_load_vnc_password(
+            password_file,
+            &vnc_password,
+            &vnc_password_length)) {
+        g_printerr(
+            "JINGWEI_VNC_PASSWORD_FILE must contain 1..8 printable "
+            "ASCII bytes\n");
+        return EXIT_FAILURE;
+    }
 
     state.vnc_port = port;
     state.main_loop = g_main_loop_new(NULL, FALSE);
@@ -487,7 +550,11 @@ int main(int argc, char **argv)
 
     vnc_config.port = port;
     vnc_config.desktop_name = "JingWei WPE Browser";
+    vnc_config.password = vnc_password;
     state.vnc_backend = jw_vnc_backend_create(state.surface, &vnc_config);
+    jw_browser_clear_secret(vnc_password, vnc_password_length);
+    g_clear_pointer(&vnc_password, g_free);
+    vnc_password_length = 0;
     if (state.vnc_backend == NULL) {
         g_printerr("Failed to create the JingWei VNC backend\n");
         goto cleanup;
@@ -581,6 +648,8 @@ int main(int argc, char **argv)
     result = state.runtime_failed ? EXIT_FAILURE : EXIT_SUCCESS;
 
 cleanup:
+    jw_browser_clear_secret(vnc_password, vnc_password_length);
+    g_clear_pointer(&vnc_password, g_free);
     jw_browser_cleanup(&state);
     return result;
 }

@@ -27,6 +27,10 @@
 #include <time.h>
 #include <unistd.h>
 
+#if JINGWEI_TEST_HAVE_LIBVNCSERVER
+#include <rfb/rfbproto.h>
+#endif
+
 #define TEST_CHECK(condition) \
     do { \
         if (!(condition)) { \
@@ -231,20 +235,27 @@ static void *test_process_events(void *data)
     return NULL;
 }
 
-static int test_rfb_handshake(int socket_fd, uint16_t width, uint16_t height)
+static int test_rfb_handshake(
+    int socket_fd,
+    uint16_t width,
+    uint16_t height,
+    const char *password,
+    int expect_success)
 {
     static const uint8_t protocol[] = "RFB 003.008\n";
     const size_t protocol_size = 12;
     uint8_t server_protocol[12];
     uint8_t security_count;
     uint8_t security_types[255];
-    uint8_t selected_security = 1;
+    uint8_t selected_security = 2;
+    uint8_t challenge[16];
     uint8_t security_result[4];
     uint8_t shared = 1;
     uint8_t server_init[24];
     uint32_t name_length;
     char *name;
     size_t index;
+    int supports_vnc_auth = 0;
     int supports_none = 0;
 
     if (!test_receive_all(socket_fd, server_protocol, sizeof(server_protocol)) ||
@@ -256,14 +267,33 @@ static int test_rfb_handshake(int socket_fd, uint16_t width, uint16_t height)
         return 0;
     }
     for (index = 0; index < security_count; ++index) {
-        if (security_types[index] == selected_security) {
+        if (security_types[index] == 1) {
             supports_none = 1;
         }
+        if (security_types[index] == selected_security) {
+            supports_vnc_auth = 1;
+        }
     }
-    if (!supports_none ||
+    if (!supports_vnc_auth || supports_none || password == NULL ||
         !test_send_all(socket_fd, &selected_security, 1) ||
+        !test_receive_all(socket_fd, challenge, sizeof(challenge))) {
+        return 0;
+    }
+#if JINGWEI_TEST_HAVE_LIBVNCSERVER
+    rfbEncryptBytes(challenge, (char *)password);
+#else
+    return 0;
+#endif
+    if (!test_send_all(socket_fd, challenge, sizeof(challenge)) ||
         !test_receive_all(socket_fd, security_result, sizeof(security_result)) ||
-        test_read_be32(security_result) != 0 ||
+        (expect_success && test_read_be32(security_result) != 0) ||
+        (!expect_success && test_read_be32(security_result) == 0)) {
+        return 0;
+    }
+    if (!expect_success) {
+        return 1;
+    }
+    if (
         !test_send_all(socket_fd, &shared, 1) ||
         !test_receive_all(socket_fd, server_init, sizeof(server_init)) ||
         test_read_be16(server_init) != width ||
@@ -284,9 +314,9 @@ static int test_rfb_handshake(int socket_fd, uint16_t width, uint16_t height)
         return 0;
     }
     name[name_length] = '\0';
-    supports_none = strcmp(name, "JingWei network test") == 0;
+    supports_vnc_auth = strcmp(name, "JingWei network test") == 0;
     free(name);
-    return supports_none;
+    return supports_vnc_auth;
 }
 
 static int test_request_and_receive_pixels(
@@ -411,7 +441,7 @@ static int test_input_mapping(void)
 {
     jw_surface_t *surface;
     jw_vnc_backend_t *backend;
-    jw_vnc_config_t config;
+    jw_vnc_config_t config = { 0 };
     jw_frame_t frame;
     jw_input_event_t event;
     jw_event_queue_stats_t stats;
@@ -425,6 +455,7 @@ static int test_input_mapping(void)
 
     config.port = 15900;
     config.desktop_name = "JingWei test";
+    config.password = NULL;
     backend = jw_vnc_backend_create(surface, &config);
     if (jw_vnc_backend_is_available()) {
         TEST_CHECK(backend != NULL);
@@ -476,6 +507,41 @@ static int test_input_mapping(void)
     return 1;
 }
 
+static int test_password_validation(void)
+{
+    jw_surface_t *surface;
+    jw_vnc_backend_t *backend;
+    jw_vnc_config_t config = { 0 };
+    char non_ascii[] = { (char)0xc3, (char)0xa9, '\0' };
+
+    TEST_CHECK(jw_vnc_backend_is_available());
+    surface = jw_surface_create(2, 2, 2);
+    TEST_CHECK(surface != NULL);
+    config.desktop_name = "JingWei password validation";
+
+    config.password = "a";
+    backend = jw_vnc_backend_create(surface, &config);
+    TEST_CHECK(backend != NULL);
+    jw_vnc_backend_destroy(backend);
+
+    config.password = "12345678";
+    backend = jw_vnc_backend_create(surface, &config);
+    TEST_CHECK(backend != NULL);
+    jw_vnc_backend_destroy(backend);
+
+    config.password = "";
+    TEST_CHECK(jw_vnc_backend_create(surface, &config) == NULL);
+    config.password = "123456789";
+    TEST_CHECK(jw_vnc_backend_create(surface, &config) == NULL);
+    config.password = "bad pass";
+    TEST_CHECK(jw_vnc_backend_create(surface, &config) == NULL);
+    config.password = non_ascii;
+    TEST_CHECK(jw_vnc_backend_create(surface, &config) == NULL);
+
+    jw_surface_destroy(surface);
+    return 1;
+}
+
 static int test_vnc_network(void)
 {
     static const uint8_t pixels[16] = {
@@ -487,7 +553,7 @@ static int test_vnc_network(void)
     jw_surface_t *surface = NULL;
     jw_vnc_backend_t *backend = NULL;
     jw_vnc_backend_t *blocked_backend = NULL;
-    jw_vnc_config_t config;
+    jw_vnc_config_t config = { 0 };
     jw_frame_t frame;
     jw_input_event_t events[4];
     uint8_t snapshot[16];
@@ -501,6 +567,7 @@ static int test_vnc_network(void)
     int port;
     int blocked_port;
     int result = 0;
+    char password[] = "testpass";
 
     if (!jw_vnc_backend_is_available()) {
         fprintf(stderr,
@@ -524,8 +591,10 @@ static int test_vnc_network(void)
 
     config.port = port;
     config.desktop_name = "JingWei network test";
+    config.password = password;
     backend = jw_vnc_backend_create(surface, &config);
     NETWORK_CHECK(backend != NULL);
+    password[0] = 'X';
 
     frame.pixels = pixels;
     frame.size = sizeof(pixels);
@@ -554,7 +623,13 @@ static int test_vnc_network(void)
 
     socket_fd = test_connect_ipv4(port);
     NETWORK_CHECK(socket_fd >= 0);
-    NETWORK_CHECK(test_rfb_handshake(socket_fd, 2, 2));
+    NETWORK_CHECK(test_rfb_handshake(
+        socket_fd, 2, 2, "wrongpas", 0));
+    close(socket_fd);
+    socket_fd = test_connect_ipv4(port);
+    NETWORK_CHECK(socket_fd >= 0);
+    NETWORK_CHECK(test_rfb_handshake(
+        socket_fd, 2, 2, "testpass", 1));
     NETWORK_CHECK(test_request_and_receive_pixels(
         socket_fd, pixels + 12, 4));
     NETWORK_CHECK(test_send_input(socket_fd));
@@ -586,6 +661,7 @@ static int test_vnc_network(void)
     NETWORK_CHECK(blocked_port > 0 && reserved_socket >= 0);
     config.port = blocked_port;
     config.desktop_name = "JingWei blocked port test";
+    config.password = "testpass";
     blocked_backend = jw_vnc_backend_create(surface, &config);
     NETWORK_CHECK(blocked_backend != NULL);
     NETWORK_CHECK(jw_vnc_backend_start(blocked_backend) == JW_STATUS_IO_ERROR);
@@ -620,11 +696,14 @@ cleanup:
 int main(int argc, char **argv)
 {
     if (argc != 2) {
-        fprintf(stderr, "usage: %s {mapping|network}\n", argv[0]);
+        fprintf(stderr, "usage: %s {mapping|password|network}\n", argv[0]);
         return 2;
     }
     if (strcmp(argv[1], "mapping") == 0) {
         return test_input_mapping() ? 0 : 1;
+    }
+    if (strcmp(argv[1], "password") == 0) {
+        return test_password_validation() ? 0 : 1;
     }
     if (strcmp(argv[1], "network") == 0) {
         return test_vnc_network() ? 0 : 1;

@@ -15,6 +15,13 @@ set_target_properties(jingwei_core_tests PROPERTIES
 
 add_executable(jingwei_vnc_input_tests test_vnc_input.c)
 target_link_libraries(jingwei_vnc_input_tests PRIVATE JingWei::jingwei)
+target_compile_definitions(jingwei_vnc_input_tests PRIVATE
+    JINGWEI_TEST_HAVE_LIBVNCSERVER=${JINGWEI_HAVE_LIBVNCSERVER}
+)
+if(JINGWEI_HAVE_LIBVNCSERVER)
+    target_link_libraries(jingwei_vnc_input_tests PRIVATE
+        PkgConfig::LIBVNCSERVER)
+endif()
 set_target_properties(jingwei_vnc_input_tests PROPERTIES
     C_STANDARD 99
     C_STANDARD_REQUIRED ON
@@ -27,6 +34,8 @@ add_test(NAME jingwei.core.event_fifo COMMAND jingwei_core_tests fifo)
 add_test(NAME jingwei.core.event_release_safety COMMAND jingwei_core_tests release)
 add_test(NAME jingwei.vnc.input_mapping COMMAND jingwei_vnc_input_tests mapping)
 if(JINGWEI_HAVE_LIBVNCSERVER)
+    add_test(NAME jingwei.vnc.password_validation
+        COMMAND jingwei_vnc_input_tests password)
     add_test(NAME jingwei.vnc.network COMMAND jingwei_vnc_input_tests network)
     set_tests_properties(jingwei.vnc.network PROPERTIES TIMEOUT 10)
 endif()

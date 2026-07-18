@@ -25,6 +25,7 @@ Environment:
   JINGWEI_VNC_HOST_PORT     Mac loopback port (default: 5900)
   JINGWEI_WAIT_TIMEOUT      Readiness timeout in seconds (default: 900)
   JINGWEI_WAIT_INTERVAL     Container polling interval (default: 5)
+  JINGWEI_VNC_PASSWORD_FILE Host password file (default: docker/wpe-dev/vnc-password.dev)
   VNC_PORT                  Container VNC port (default: 5900)
 USAGE
 }

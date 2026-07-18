@@ -31,11 +31,13 @@ struct jw_vnc_backend {
     uint32_t stride;
     int port;
     char *desktop_name;
+    char *password;
     int started;
     pthread_mutex_t mutex;
     int mutex_initialized;
 #if JINGWEI_HAVE_LIBVNCSERVER
     rfbScreenInfoPtr screen;
+    char *password_list[2];
 #endif
 };
 
@@ -55,6 +57,56 @@ static char *jw_vnc_copy_string(const char *source)
         memcpy(copy, source, length + 1);
     }
     return copy;
+}
+
+static int jw_vnc_password_is_valid(const char *password)
+{
+    size_t index;
+    size_t length;
+
+    if (password == NULL) {
+        return 1;
+    }
+    length = strlen(password);
+    if (length == 0 || length > 8) {
+        return 0;
+    }
+    for (index = 0; index < length; ++index) {
+        unsigned char value = (unsigned char)password[index];
+
+        if (value < 0x21U || value > 0x7eU) {
+            return 0;
+        }
+    }
+    return 1;
+}
+#endif
+
+static void jw_vnc_clear_password(char *password)
+{
+    volatile unsigned char *bytes;
+    size_t length;
+
+    if (password == NULL) {
+        return;
+    }
+    length = strlen(password);
+    bytes = (volatile unsigned char *)password;
+    while (length > 0) {
+        bytes[--length] = 0;
+    }
+}
+
+#if JINGWEI_HAVE_LIBVNCSERVER
+static rfbBool jw_vnc_password_check(
+    rfbClientPtr client,
+    const char *response,
+    int length)
+{
+    if (client == NULL || response == NULL || length != CHALLENGESIZE) {
+        return FALSE;
+    }
+    return rfbCheckPasswordByList(client, response, length);
 }
 #endif
 
@@ -170,7 +222,9 @@ jw_vnc_backend_t *jw_vnc_backend_create(
         info.height > (uint32_t)INT_MAX || info.size > (size_t)INT_MAX) {
         return NULL;
     }
-    if (config != NULL && (config->port < 0 || config->port > 65535)) {
+    if (config != NULL &&
+        (config->port < 0 || config->port > 65535 ||
+            !jw_vnc_password_is_valid(config->password))) {
         return NULL;
     }
 
@@ -187,8 +241,12 @@ jw_vnc_backend_t *jw_vnc_backend_create(
     desktop_name = config != NULL && config->desktop_name != NULL
         ? config->desktop_name : "JingWei";
     backend->desktop_name = jw_vnc_copy_string(desktop_name);
+    backend->password = config != NULL && config->password != NULL
+        ? jw_vnc_copy_string(config->password) : NULL;
     backend->frame_buffer = (uint8_t *)calloc(1, info.size);
-    if (backend->desktop_name == NULL || backend->frame_buffer == NULL) {
+    if (backend->desktop_name == NULL || backend->frame_buffer == NULL ||
+        (config != NULL && config->password != NULL &&
+            backend->password == NULL)) {
         jw_vnc_backend_destroy(backend);
         return NULL;
     }
@@ -214,6 +272,13 @@ jw_vnc_backend_t *jw_vnc_backend_create(
     backend->screen->alwaysShared = TRUE;
     backend->screen->ptrAddEvent = jw_vnc_pointer_callback;
     backend->screen->kbdAddEvent = jw_vnc_key_callback;
+    if (backend->password != NULL) {
+        backend->password_list[0] = backend->password;
+        backend->password_list[1] = NULL;
+        backend->screen->authPasswdData = backend->password_list;
+        backend->screen->passwordCheck = jw_vnc_password_check;
+        backend->screen->authPasswdFirstViewOnly = 1;
+    }
     backend->screen->serverFormat.bitsPerPixel = 32;
     backend->screen->serverFormat.depth = 24;
     backend->screen->serverFormat.trueColour = TRUE;
@@ -249,6 +314,8 @@ void jw_vnc_backend_destroy(jw_vnc_backend_t *backend)
         pthread_mutex_destroy(&backend->mutex);
     }
     free(backend->desktop_name);
+    jw_vnc_clear_password(backend->password);
+    free(backend->password);
     free(backend->frame_buffer);
     free(backend);
 }
