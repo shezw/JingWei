@@ -1,0 +1,29 @@
+From: shezw <hello@shezw.com>
+Date: Sat, 18 Jul 2026 17:20:00 +0800
+Subject: [PATCH] WPE 2.52.5: link libseccomp after WebKit setup
+
+JingWei
+tools/wpe/patches wpewebkit-2.52.5-libseccomp-post-target.patch    2026-07-18
+
+The 2.52.5 framework setup drops libseccomp links added through PlatformWPE.
+Attach the resolved absolute path after WEBKIT_FRAMEWORK has completed.
+
+@link: https://github.com/shezw/JingWei
+@author: shezw
+@email: hello@shezw.com
+---
+ Source/WebKit/CMakeLists.txt | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/Source/WebKit/CMakeLists.txt b/Source/WebKit/CMakeLists.txt
+--- a/Source/WebKit/CMakeLists.txt
++++ b/Source/WebKit/CMakeLists.txt
+@@ -1108,2 +1108,6 @@
+ WEBKIT_FRAMEWORK(WebKit)
++if (PORT STREQUAL "WPE" AND ENABLE_BUBBLEWRAP_SANDBOX)
++    target_link_libraries(WebKit PRIVATE "${JINGWEI_LIBSECCOMP_LIBRARY}")
++endif ()
++
+ ADD_WEBKIT_PREFIX_HEADER(WebKit)
+--
+2.43.0

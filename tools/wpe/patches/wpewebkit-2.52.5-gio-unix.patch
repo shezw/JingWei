@@ -1,0 +1,43 @@
+From: shezw <hello@shezw.com>
+Date: Sat, 18 Jul 2026 16:10:00 +0800
+Subject: [PATCH] WPE 2.52.5: link WebKit with GioUnix and its includes
+
+JingWei
+tools/wpe/patches wpewebkit-2.52.5-gio-unix.patch    2026-07-18
+
+Backport the WPE main-branch dependency required by
+NetworkCacheDataGLib.cpp for gio/gfiledescriptorbased.h. The 2.52.5 WebKit
+target does not propagate the imported GioUnix target's include usage
+requirements to unified source compilation, so add them explicitly.
+
+@link: https://github.com/shezw/JingWei
+@author: shezw
+@email: hello@shezw.com
+---
+ Source/WebKit/PlatformWPE.cmake | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/Source/WebKit/PlatformWPE.cmake b/Source/WebKit/PlatformWPE.cmake
+--- a/Source/WebKit/PlatformWPE.cmake
++++ b/Source/WebKit/PlatformWPE.cmake
+@@ -465,8 +465,17 @@
+ list(APPEND WebKit_PRIVATE_INCLUDE_DIRECTORIES
+     "${JavaScriptCoreGLib_DERIVED_SOURCES_DIR}/jsc"
+ )
+-
++
++get_target_property(GLIB_GIO_UNIX_INCLUDE_DIRECTORIES
++    GLib::GioUnix
++    INTERFACE_INCLUDE_DIRECTORIES
++)
++list(APPEND WebKit_SYSTEM_INCLUDE_DIRECTORIES
++    ${GLIB_GIO_UNIX_INCLUDE_DIRECTORIES}
++)
++
+ list(APPEND WebKit_LIBRARIES
++    GLib::GioUnix
+     GLib::Module
+     Soup3::Soup3
+ )
+--
+2.43.0

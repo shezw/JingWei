@@ -17,7 +17,7 @@
 
 ## 目标
 
-该环境在 Apple Silicon macOS 上使用原生 `linux/arm64` 容器，为 JingWei、WPE WebKit 2.52.5 和后续 `jw-wpe-platform` 提供可重复的 Linux 工具链。
+该环境在 Apple Silicon macOS 上使用原生 `linux/arm64` 容器，为 JingWei、WPE WebKit 2.52.5 和 `jingwei_wpe` 提供可重复的 Linux 工具链。
 
 容器只负责编译、单元测试、软件/headless 视觉烟测和开发预览。真实 DRM atomic、GBM/EGL、DMA-BUF、modifier、fence、page-flip 和显示时序必须在有 `/dev/dri` 的原生 Linux 主机或目标板验证。
 
@@ -44,6 +44,22 @@ docker compose -f compose.yaml -f compose.bind.yaml run --rm wpe-dev ./tools/con
 docker compose run --rm wpe-dev ./tools/wpe/build-wpe.sh
 ```
 
+WPE 前缀完成后，只刷新 JingWei 源码快照并重编译适配器/浏览器：
+
+```bash
+./tools/dev/rebuild-jingwei.sh
+```
+
+启动确定性页面并从 Mac 回环端口验证真实像素、点击和键盘：
+
+```bash
+./tools/test/smoke-browser.sh
+./tools/test/runtime-report.sh
+open vnc://127.0.0.1:5900
+```
+
+smoke 通过后会保留 `jw-browser` 运行，并在 `test-results/rfb-wpe-e2e/` 保存初始、点击和键盘完成三张 PPM 证据帧。
+
 只验证新的 WPEPlatform/Headless 图形接口（适合日常快速迭代）：
 
 ```bash
@@ -60,7 +76,7 @@ WPE_BUILD_JOBS=4 docker compose run --rm wpe-dev ./tools/wpe/build-wpe.sh
 
 | Profile | 用途 | 图形选项 |
 | --- | --- | --- |
-| `container` | macOS 容器配置、软件/headless 开发 | DRM、GBM、Wayland、媒体、WebAudio、WebCodecs、语音、ATK、gamepad 关闭；WPEPlatform headless 保留 |
+| `container` | macOS 容器配置、软件/headless 开发 | DRM 库保留给 WPE 公共代码；GBM、DRM backend、Wayland、媒体、WebAudio、语音关闭；WPEPlatform headless 保留 |
 | `drm` | 原生 Linux GPU 或目标板 | DRM、GBM、WPEPlatform DRM 打开；Wayland 关闭；使用完整依赖镜像 |
 
 默认 Docker target `wpe-dev` 是图形底座优先的精简开发环境。完整媒体依赖使用 `wpe-full-dev`：
@@ -85,18 +101,34 @@ Docker/OrbStack 在 Mac 上运行的是 Linux VM，当前容器没有 `/dev/dri`
 
 推荐分两步：
 
-1. WPE 独立烟测可临时使用现成的虚拟 display/VNC/noVNC 组合。
-2. JingWei 集成使用开发专用 `jw_backend_vnc`：把 JingWei 最终 CPU framebuffer 和 damage rectangles 交给 LibVNCServer；Mac 可使用 VNC 客户端，或由独立 noVNC/websockify sidecar 在 `http://127.0.0.1:6080` 查看；输入事件再转换回 JingWei event。
+1. `jingwei_wpe` 接收 WPEPlatform 的 SHM ARGB8888 buffer，并复制到 JingWei BGRA8888 surface。
+2. `jw_vnc_backend` 把 JingWei CPU framebuffer 和 damage rectangles 交给 LibVNCServer；Mac 使用 VNC 客户端查看，输入事件再转换为 WPE pointer/key event。
 
 WPE WebKit 2.52.5 的新 WPEPlatform 已同时提供 `WPEBufferDMABuf` 和 `WPEBufferSHM`。其 surfaceless renderer 在不能导出 DMA-BUF 时会选择 SharedMemory swap chain，因此容器预览可以直接消费 SHM buffer，不需要先设计新的跨虚拟机图形协议。该路径会通过 `glReadPixels` 回读，适合功能开发和视觉测试，不代表目标设备的零拷贝性能。
 
 noVNC 不安装进 WPE/JingWei 核心工具链镜像，避免引入与浏览器开发无关的 OpenStack/Python 依赖。第二步只新增一个输出 backend，不重新设计图形协议，也不进入量产依赖。量产路径保持：
 
 ```text
-WPE WebKit -> jw-wpe-platform -> JingWei -> EGL/GLES -> DRM atomic KMS
+WPE WebKit -> jingwei_wpe -> JingWei -> EGL/GLES -> DRM atomic KMS
 ```
 
-现有 Compose 只在 loopback 上预留 VNC `5900` 端口；独立 noVNC sidecar 也应只绑定 loopback。不要使用 `xhost +`、`privileged: true`、整段 `/dev` 挂载或关闭浏览器沙箱。
+现有 Compose 只把 VNC `5900` 发布到 Mac loopback。容器丢弃全部 capability 并设置 `no-new-privileges`；Browser 只挂载只读的 JingWei build 和 WPE prefix，不会得到 source、WPE build、download 或 compiler-cache 卷。Docker Desktop/OrbStack 不允许 WPE 再创建 Bubblewrap 用户命名空间，因此 `jw-browser` 仅在该受限容器内设置 `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1`。原生 Linux/量产部署应恢复 WPE sandbox，不要使用 `xhost +`、`privileged: true` 或整段 `/dev` 挂载。
+
+## 内存与速度开关
+
+`jw-browser` 默认面向单页嵌入式 UI：
+
+- `JINGWEI_JSC_USE_JIT=false`：请求 JavaScriptCore 通过 `JSC_useJIT` 关闭 JIT，优先内存和可预测性；容器入口只接受 `true` 或 `false`。
+- `JINGWEI_CACHE_MODEL=document-viewer`：选择 WebKit 最小化缓存策略。
+- 两项均可在 Compose 启动时覆盖：
+
+```bash
+JINGWEI_JSC_USE_JIT=true \
+JINGWEI_CACHE_MODEL=web-browser \
+docker compose up -d --force-recreate jw-browser
+```
+
+缓存模型还接受 `document-browser`。关闭 JIT 不改变 JavaScript 语言兼容性，但会降低计算密集 JS 性能；具体内存收益依页面脚本和运行时间而异。
 
 ## 缓存布局
 

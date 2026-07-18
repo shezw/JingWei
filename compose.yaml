@@ -8,6 +8,7 @@
 services:
   wpe-dev:
     platform: ${WPE_DOCKER_PLATFORM:-linux/arm64}
+    image: ${JINGWEI_DEV_IMAGE:-jingwei-wpe-dev:local}
     build:
       context: .
       dockerfile: docker/wpe-dev/Dockerfile
@@ -23,6 +24,10 @@ services:
       WPE_BUILD_TYPE: ${WPE_BUILD_TYPE:-Release}
       WPE_PROFILE: ${WPE_PROFILE:-container}
       WPE_VERSION: ${WPE_VERSION:-2.52.5}
+      WPE_PREFIX_DIR: /workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}
+      CMAKE_PREFIX_PATH: /workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}
+      PKG_CONFIG_PATH: /workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/lib/pkgconfig:/workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/lib/aarch64-linux-gnu/pkgconfig:/workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/lib/x86_64-linux-gnu/pkgconfig:/workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/share/pkgconfig
+      LD_LIBRARY_PATH: /workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/lib:/workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/lib/aarch64-linux-gnu:/workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/lib/x86_64-linux-gnu
     volumes:
       - jingwei-build:/workspace/jingwei-build
       - wpe-build:/workspace/wpe/build
@@ -30,8 +35,60 @@ services:
       - wpe-prefix:/workspace/wpe/prefix
       - wpe-source:/workspace/wpe/src
       - compiler-cache:/workspace/cache/ccache
+
+  jw-browser:
+    platform: ${WPE_DOCKER_PLATFORM:-linux/arm64}
+    image: ${JINGWEI_DEV_IMAGE:-jingwei-wpe-dev:local}
+    build:
+      context: .
+      dockerfile: docker/wpe-dev/Dockerfile
+      target: ${WPE_DOCKER_TARGET:-wpe-dev}
+    init: true
+    shm_size: 1gb
+    stop_grace_period: 10s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      WPE_BUILD_JOBS: ${WPE_BUILD_JOBS:-3}
+      WPE_BUILD_TYPE: ${WPE_BUILD_TYPE:-Release}
+      WPE_PROFILE: ${WPE_PROFILE:-container}
+      WPE_VERSION: ${WPE_VERSION:-2.52.5}
+      WPE_PREFIX_DIR: /workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}
+      CMAKE_PREFIX_PATH: /workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}
+      PKG_CONFIG_PATH: /workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/lib/pkgconfig:/workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/lib/aarch64-linux-gnu/pkgconfig:/workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/lib/x86_64-linux-gnu/pkgconfig:/workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/share/pkgconfig
+      LD_LIBRARY_PATH: /workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/lib:/workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/lib/aarch64-linux-gnu:/workspace/wpe/prefix/${WPE_VERSION:-2.52.5}-${WPE_PROFILE:-container}/lib/x86_64-linux-gnu
+      JINGWEI_BROWSER_BIN: /workspace/jingwei-build/apps/jw-wpe-browser/jw-wpe-browser
+      JINGWEI_BROWSER_URL: ${JINGWEI_BROWSER_URL:-about:blank}
+      JINGWEI_CACHE_MODEL: ${JINGWEI_CACHE_MODEL:-document-viewer}
+      JINGWEI_WAIT_INTERVAL: ${JINGWEI_WAIT_INTERVAL:-5}
+      JINGWEI_WAIT_TIMEOUT: ${JINGWEI_WAIT_TIMEOUT:-900}
+      JSC_useJIT: ${JINGWEI_JSC_USE_JIT:-false}
+      VNC_PORT: ${VNC_PORT:-5900}
+      # The container itself drops every capability and keeps no-new-privileges.
+      # Nested bubblewrap user namespaces are unavailable in Docker Desktop /
+      # OrbStack, so WPE's second sandbox layer must be disabled here.
+      WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: "1"
+      XDG_RUNTIME_DIR: /tmp/runtime-jw
+    volumes:
+      # The unsandboxed WebKit processes receive runtime artifacts only, and
+      # cannot persist changes into any source, build, download, or cache volume.
+      - jingwei-build:/workspace/jingwei-build:ro
+      - wpe-prefix:/workspace/wpe/prefix:ro
     ports:
-      - 127.0.0.1:5900:5900
+      - "127.0.0.1:${JINGWEI_VNC_HOST_PORT:-5900}:${VNC_PORT:-5900}"
+    command:
+      - /workspace/JingWei/tools/dev/run-browser.sh
+      - --container
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - timeout 2 bash -c 'exec 3<>/dev/tcp/127.0.0.1/$${VNC_PORT:-5900}; IFS= read -r banner <&3; [[ "$${banner}" == RFB\ * ]]'
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: ${JINGWEI_WAIT_TIMEOUT:-900}s
 
 volumes:
   compiler-cache:

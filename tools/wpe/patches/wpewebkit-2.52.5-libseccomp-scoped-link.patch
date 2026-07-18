@@ -1,0 +1,26 @@
+From: shezw <hello@shezw.com>
+Date: Sat, 18 Jul 2026 17:05:00 +0800
+Subject: [PATCH] WPE 2.52.5: resolve libseccomp in WebKit scope
+
+JingWei
+tools/wpe/patches wpewebkit-2.52.5-libseccomp-scoped-link.patch    2026-07-18
+
+The cache entry exists after configuration but is not populated when the WPE
+platform target list is evaluated. Resolve libseccomp in the WPE platform
+scope so a post-target patch can link the absolute path.
+
+@link: https://github.com/shezw/JingWei
+@author: shezw
+@email: hello@shezw.com
+---
+ Source/WebKit/PlatformWPE.cmake | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Source/WebKit/PlatformWPE.cmake b/Source/WebKit/PlatformWPE.cmake
+--- a/Source/WebKit/PlatformWPE.cmake
++++ b/Source/WebKit/PlatformWPE.cmake
+@@ -514 +514 @@
+-    list(APPEND WebKit_LIBRARIES Libseccomp::Libseccomp)
++    find_library(JINGWEI_LIBSECCOMP_LIBRARY NAMES seccomp REQUIRED)
+--
+2.43.0

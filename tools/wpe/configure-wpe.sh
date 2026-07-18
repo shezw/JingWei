@@ -52,7 +52,7 @@ case "${WPE_PROFILE}" in
             -DUSE_FLITE=OFF
             -DUSE_GBM=OFF
             -DUSE_GSTREAMER=OFF
-            -DUSE_LIBDRM=OFF
+            -DUSE_LIBDRM=ON
         )
         ;;
     drm)

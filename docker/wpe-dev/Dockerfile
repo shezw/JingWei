@@ -21,6 +21,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         g++ \
         gcc \
         git \
+        libclang-rt-18-dev \
         libdrm-dev \
         libegl1-mesa-dev \
         libgbm-dev \
@@ -35,9 +36,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         ninja-build \
         pkg-config \
         python3 \
+        shared-mime-info \
     && rm -rf /var/lib/apt/lists/*
 
-FROM jingwei-dev AS wpe-dev
+FROM jingwei-dev AS wpe-dev-base
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
@@ -130,8 +132,6 @@ RUN groupadd --gid "${JW_GID}" jw \
         /workspace/cache/ccache \
     && chown -R jw:jw /workspace
 
-COPY --chown=jw:jw . /workspace/JingWei
-
 ENV CC=clang \
     CXX=clang++ \
     CCACHE_DIR=/workspace/cache/ccache \
@@ -142,12 +142,7 @@ ENV CC=clang \
     WPE_PROFILE=container \
     WPE_VERSION=2.52.5
 
-USER jw
-WORKDIR /workspace/JingWei
-
-CMD ["/bin/bash"]
-
-FROM wpe-dev AS wpe-full-dev
+FROM wpe-dev-base AS wpe-full-dev-base
 
 USER root
 
@@ -169,3 +164,21 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && rm -rf /var/lib/apt/lists/*
 
 USER jw
+
+FROM wpe-dev-base AS wpe-dev
+
+COPY --chown=jw:jw . /workspace/JingWei
+
+USER jw
+WORKDIR /workspace/JingWei
+
+CMD ["/bin/bash"]
+
+FROM wpe-full-dev-base AS wpe-full-dev
+
+COPY --chown=jw:jw . /workspace/JingWei
+
+USER jw
+WORKDIR /workspace/JingWei
+
+CMD ["/bin/bash"]

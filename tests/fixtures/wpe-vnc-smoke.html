@@ -1,0 +1,88 @@
+<!--
+    JingWei
+    tests/fixtures wpe-vnc-smoke.html    2026-07-18
+
+     ______     __  __     ______     ______     __     __
+    /\  ___\   /\ \_\ \   /\  ___\   /\___  \   /\ \  _ \ \
+    \ \___  \  \ \  __ \  \ \  __\   \/_/  /__  \ \ \/ ".\ \
+     \/\_____\  \ \_\ \_\  \ \_____\   /\_____\  \ \__/".~\_\
+      \/_____/   \/_/\/_/   \/_____/   \/_____/   \/_/   \/_/.com
+
+    @link    : https://github.com/shezw/JingWei
+    @author  : shezw
+    @email   : hello@shezw.com
+-->
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>JingWei WPE VNC Smoke</title>
+    <style>
+        :root { color-scheme: dark; font: 24px/1.25 sans-serif; }
+        * { box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; overflow: hidden; }
+        body { margin: 0; background: #07111f; color: #ffffff; }
+        h1 { position: absolute; left: 80px; top: 28px; margin: 0; font-size: 42px; }
+        button, input {
+            position: absolute;
+            top: 110px;
+            height: 90px;
+            border: 0;
+            border-radius: 12px;
+            padding: 0 28px;
+            appearance: none;
+            outline: none;
+            font: 700 25px/1 sans-serif;
+        }
+        button { left: 80px; width: 360px; background: #f8fafc; color: #07111f; }
+        input { left: 480px; width: 720px; background: #e2e8f0; color: #07111f; }
+        .state {
+            position: absolute;
+            left: 80px;
+            width: 1120px;
+            height: 180px;
+            border-radius: 20px;
+            padding: 34px 40px;
+        }
+        .state h2 { margin: 0 0 12px; font-size: 34px; }
+        .state p { margin: 0; font-size: 26px; }
+        .click-state { top: 240px; background: #c2410c; }
+        .click-state.activated { background: #15803d; }
+        .text-state { top: 460px; background: #1d4ed8; }
+        .text-state.activated { background: #7e22ce; }
+    </style>
+</head>
+<body>
+<h1>WPE → JingWei → RFB input proof</h1>
+<button type="button">Click at (260, 155)</button>
+<input aria-label="RFB keyboard input" placeholder="Type at (840, 155)" autocomplete="off" maxlength="64">
+<section class="state click-state">
+    <h2>Pointer state</h2>
+    <p>WAITING FOR CLICK</p>
+</section>
+<section class="state text-state">
+    <h2>Keyboard state</h2>
+    <p>WAITING FOR ASCII</p>
+</section>
+<script>
+    const button = document.querySelector('button');
+    const input = document.querySelector('input');
+    const clickState = document.querySelector('.click-state');
+    const textState = document.querySelector('.text-state');
+    const expectedToken = new URL(window.location.href).searchParams.get('token') || '';
+
+    button.addEventListener('click', () => {
+        clickState.classList.add('activated');
+        clickState.querySelector('p').textContent = 'CLICK RECEIVED';
+    });
+    input.addEventListener('input', () => {
+        const complete = expectedToken.length > 0 && input.value === expectedToken;
+        textState.classList.toggle('activated', complete);
+        textState.querySelector('p').textContent = complete
+            ? 'EXACT ASCII TOKEN RECEIVED'
+            : `WAITING FOR EXACT ASCII (${input.value.length}/${expectedToken.length})`;
+    });
+</script>
+</body>
+</html>
